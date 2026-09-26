@@ -1,0 +1,70 @@
+# 移动云杯 · 本地论文库研究方向热点挖掘 —— 唯一配置入口
+#
+# 只有一套环境，不做接口抽象（方案 §不做清单）。
+# ⚠️ 凡标「别改」的值都来自实测踩坑，改了不是调参，是把那几小时重走一遍。
+
+paths:
+  # 导师论文库（只读，四道闸）。访问一律走 dasc.readonly.LibraryView。
+  library: D:\大学编程学习\obsidian\rl_acdemical_paper
+  # dasc 复用源。sys.path 接线在 hotspot/__init__.py，这里只作记录。
+  obsidian: D:\大学编程学习\obsidian
+  # 产物目录，相对本项目根。可全量重建，不入库。
+  workspace: workspace
+
+corpus:
+  # 24+25 合并语料（方案 A，2026-09-24）—— 一次性升级后的完整语料源。
+  # 并集 22,747 篇（25=13,119 + 24=9,628，paper_id 交集 0），字段同构、跨年口径统一。
+  # 读取走 hotspot/corpus.MergedCorpus，只读；`Paper.year` 保留（可分组）。
+  # ⚠️ 此后移动云杯的语料来源是这里（取代单一导师库 D 盘 2025 单年）。
+  sources:
+    - G:\rl_data24\资源\papers.jsonl
+    - G:\rl_data\资源\papers.jsonl
+
+llm:
+  base_url: https://api.deepseek.com/v1
+  model_flash: deepseek-chat    # L3 命名簇 / L5 引用校验
+  model_pro: deepseek-chat      # L5 答案生成
+  #  ⚠️ 待核实：现网模型名以官方定价页为准（方案 §待核实事项 2）
+  api_key_env: DEEPSEEK_API_KEY # 只从环境变量读，永不入库、永不落盘
+  max_input_chars: 8000         # dasc.llm.client 的「只发摘要」闸；溢出 raise 不截断
+  budget:
+    max_calls: 2000
+    max_tokens: 5000000
+    max_usd: null               # 不按钱熔断，按 token
+
+embed:
+  # ── 以下三个值来自 dasc/cluster/embed.py，**一个都别改** ──
+  model: BAAI/bge-m3            # XLM-R-large 568M / 1024 维
+  max_seq_length: 1024          # 8k 上限在 CPU 上每篇要几分钟
+  batch_size: 4                 # MX330 只有 2 GB 显存，装不下 fp32 的 2.3 GB 权重
+  hf_home: D:\hf_cache          # C 盘满会导致 Python 段错误
+  # ── 本项目新增：分块续跑（风险 R1 的唯一对策）──
+  # dasc 的 embed_pool 一次 savez_compressed 全量落盘，全库 8.5 小时断了全白跑。
+  chunk_size: 500               # 每 N 篇落一个分片；已完成分片不重算
+
+cluster:
+  preprocess: whiten            # bge-m3 各向异性（与全局均值中位余弦 0.769），裸余弦无分辨力
+  n_components: 64              # ⚠️ 这是 586 篇上调的；13,119 篇必须重扫（探针 3）
+  min_cluster_size: 8           # ⚠️ 同上
+
+retrieval:
+  top_k_direction_fts: 1000     # L1 方向选择器：FTS5 尽力召回的上限（建子语料，尽力多收）
+  top_k_local: 8                # LOCAL 路径现场取摘要的篇数
+  top_k_vector: 50              # 向量召回候选数（作为 FTS5 的补充路）
+  llm_router: true              # 在线路由用 LLM 增强（关键词命中/REFUSE 仍规则优先，失败退 LOCAL）
+  query_rewrite: true           # 在线检索前用 LLM 做查询改写（提升召回，失败退原文）
+  vector_store: none            # 22,747 × 1024 fp32 ≈ 93 MB，numpy 暴力毫秒级；不引向量库
+
+spread:
+  # ── 跨会扩散三态（方案 §3.2）—— 纯计数，0 token ──
+  #   铺开 = 出现在 >= spread_min 个会
+  #   新进 = 只出现在 venue_order 末位的会
+  #   单会 = 其余
+  # ⚠️ 红线：**没有第四态**。语料为 24+25 两年（见方案文件头修订框），
+  #    但主口径选择对比跨会、不做跨年 ⇒ 仍不能输出"退潮/下降/衰退"（方案 §1.3）。
+  spread_min: 3
+  # ⚠️ 探针 6 要实测核实这个序（方案 §8）。序错了整个预测实验垮掉（风险 R8）。
+  venue_order: [ICLR, ICML, NeurIPS]
+  venue_holdout: NeurIPS        # 跨会留出验证的封存会（方案 §5.4）
+  # CoRL 是机器人专会，不属于这条时间轴，另算。
+  venue_off_axis: [CoRL]

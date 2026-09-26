@@ -1,0 +1,8 @@
+[
+  {"id": "g01", "type": "global", "question": "2025 年 RLHF 方向最火的是什么？"},
+  {"id": "g02", "type": "global", "question": "offline RL 最近的热点主题有哪些？"},
+  {"id": "l01", "type": "local", "question": "RLOO 的核心创新点是什么？"},
+  {"id": "l02", "type": "local", "question": "这篇关于 verifiable rewards 的方法主要做了什么？"},
+  {"id": "r01", "type": "refuse", "question": "量子计算的退相干抑制有什么热点？"},
+  {"id": "r02", "type": "refuse", "question": "漫游器身外接设备方向最近有什么研究？"}
+]
