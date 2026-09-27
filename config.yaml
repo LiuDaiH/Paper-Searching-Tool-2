@@ -25,7 +25,7 @@ llm:
   model_flash: deepseek-chat    # L3 命名簇 / L5 引用校验
   model_pro: deepseek-chat      # L5 答案生成
   #  ⚠️ 待核实：现网模型名以官方定价页为准（方案 §待核实事项 2）
-  api_key_env: DEEPSEEK_API_KEY # 只从环境变量读，永不入库、永不落盘
+  api_key_env: API_KEY          # 用户环境变量名（本项目），只从环境变量读，永不入库、永不落盘
   max_input_chars: 8000         # dasc.llm.client 的「只发摘要」闸；溢出 raise 不截断
   budget:
     max_calls: 2000

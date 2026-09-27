@@ -30,8 +30,10 @@ def generate_answer(context: Context, *, cfg=None, dry_run: bool = False,
     cfg = cfg or load_config()
     pro = (cfg.get("llm") or {}).get("model_pro")
     client = make_client(cfg, model=model or pro or "deepseek-chat", dry_run=dry_run)
+    user = (context.body + "\n\n" if context.body and context.body.strip() else "") \
+        + "用户问题：" + context.question
     call = client.ask(
-        context.question,
+        user,
         system=context.prefix,
         schema=ANSWER_SCHEMA,
         required=("answer",),

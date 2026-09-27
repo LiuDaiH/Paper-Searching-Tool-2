@@ -31,12 +31,18 @@ __all__ = ["run_cluster", "to_metrics", "sweep_params", "pick_params", "save_met
 def run_cluster(vectors: np.ndarray, ids: list[str], *,
                 min_cluster_size: int, min_samples: int,
                 n_components: int) -> Any:
-    """封装 `clusterers.run`（默认白化）。返回 `Clustering`。"""
+    """封装 `clusterers.run`（白化）。
+
+    ⚠️ `metric="euclidean"`（2026-09-27）：原 dasc 用 `cosine` 会触发 sklearn HDBSCAN
+    的 `brute`，需建全量距离矩阵（22,747² float64 = 3.86 GiB）→ 8GB 机器 OOM。PCA 白化后
+    各向同性，euclidean 与 cosine 近似，且 euclidean 走 kdtree（省内存、秒级）。
+    """
     from dasc.cluster import clusterers
     return clusterers.run(vectors, ids,
                           min_cluster_size=min_cluster_size,
                           min_samples=min_samples,
-                          prep="whiten", n_components=n_components)
+                          prep="whiten", n_components=n_components,
+                          metric="euclidean")
 
 
 def sweep_params(vectors: np.ndarray, ids: list[str],
@@ -66,6 +72,55 @@ def pick_params(rows) -> dict:
         "chosen": {"n_components": best.n_components,
                    "min_cluster_size": best.min_cluster_size},
     }
+
+
+def _parse_ints(s: str | None) -> list[int] | None:
+    """解析逗号分隔的整数参数，如 `--sizes 4,8,16`。"""
+    if not s:
+        return None
+    out = [int(x) for x in s.split(",") if x.strip()]
+    return out or None
+
+
+def sweep_resumable(X, ids, *, out_json,
+                    components=(32, 64, 128),
+                    sizes=(4, 6, 8, 12, 16, 24, 32),
+                    min_samples: int = 4, prep: str = "whiten") -> dict:
+    """逐组串行扫参，**每组结果即时落盘**，断了可续跑（跳过已完成组）。
+
+    相比 `dasc.sweep_grid` 一次全跑，这里逐个组合、单组失败（含 OOM）也
+    记录进 `sweep.json` 并继续——内存不足时能明确看到是哪组挂、且不白跑。
+    平台判定请基于落盘 `results`（`n_clusters`/`n_noise`）人工判，或后续写轻量选参。
+    """
+    from dasc.cluster import clusterers  # noqa: PLC0415
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    results: dict = {}
+    if out_json.exists():
+        try:
+            results = json.loads(out_json.read_text(encoding="utf-8")).get("results", {})
+        except Exception:  # noqa: BLE001 —— 已损坏则重新开始
+            results = {}
+
+    for nc in components:
+        for mcs in sizes:
+            key = f"{nc}_{mcs}"
+            if key in results:
+                print(f"[sweep] {key} 已存在，跳过", flush=True)
+                continue
+            try:
+                cl = clusterers.run(X, ids, min_cluster_size=mcs, min_samples=min_samples,
+                                    prep=prep, n_components=nc)
+                results[key] = {"n_components": nc, "min_cluster_size": mcs,
+                                "n_clusters": cl.n_clusters, "n_noise": cl.n_noise}
+            except Exception as e:  # noqa: BLE001 —— OOM/报错也落盘，不阻塞
+                results[key] = {"n_components": nc, "min_cluster_size": mcs,
+                                "error": str(e)}
+            out_json.write_text(json.dumps(
+                {"prep": prep, "components": list(components),
+                 "sizes": list(sizes), "results": results},
+                ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"[sweep] {key} 完成 -> 已落盘", flush=True)
+    return results
 
 
 def to_metrics(clustering, *, venue_of: dict[str, str],
@@ -153,7 +208,11 @@ def save_metrics(metrics: list[ClusterMetric], *,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="全库向量 → 聚类 + 跨会三态 metric")
-    ap.add_argument("--sweep", action="store_true", help="只扫参（探针 3），不落成品")
+    ap.add_argument("--sweep", action="store_true", help="只扫参（探针 3），逐组落盘续跑")
+    ap.add_argument("--components", type=str, default=None,
+                    help="扫参的 n_components 候选，逗号分隔（默认 32,64,128；内存紧可缩）")
+    ap.add_argument("--sizes", type=str, default=None,
+                    help="扫参的 min_cluster_size 候选，逗号分隔（默认 4,6,8,12,16,24,32）")
     ap.add_argument("--min-cluster-size", type=int, default=None)
     ap.add_argument("--n-components", type=int, default=None)
     a = ap.parse_args()
@@ -167,20 +226,12 @@ def main() -> int:
     print(f"读入向量 {X.shape}（{len(ids)} 篇）")
 
     if a.sweep:
-        rows = sweep_params(X, ids)
-        from dasc.cluster import clusterers  # noqa: PLC0415
-        print(clusterers._sweep_table(rows, prep="whiten"))
-        pp = pick_params(rows)
-        print(json.dumps(pp, ensure_ascii=False, indent=2))
+        comps = _parse_ints(a.components) or [32, 64, 128]
+        sizes = _parse_ints(a.sizes) or [4, 6, 8, 12, 16, 24, 32]
         out = paths["workspace"] / "metrics" / "sweep.json"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        simple_rows = [{
-            "n_components": r.n_components,
-            "min_cluster_size": r.min_cluster_size,
-            "n_clusters": r.n_clusters, "n_noise": r.n_noise,
-        } for r in rows]
-        out.write_text(json.dumps({"rows": simple_rows, "pick": pp},
-                                  ensure_ascii=False, indent=2), encoding="utf-8")
+        res = sweep_resumable(X, ids, out_json=out, components=comps, sizes=sizes)
+        print(json.dumps({"components": comps, "sizes": sizes, "results": res},
+                         ensure_ascii=False, indent=2))
         print("落盘:", out)
         return 0
 

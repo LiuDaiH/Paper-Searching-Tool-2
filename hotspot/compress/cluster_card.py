@@ -25,7 +25,7 @@ from dasc.llm.client import MAX_INPUT_CHARS  # noqa: E402 —— 出境闸
 __all__ = ["CARD_SCHEMA", "gen_card", "make_cards", "load_cluster_members"]
 
 
-#: LLM 输出契约（JSON mode）。`evidence_ids` 最后要过 validator。
+#: LLM 输出契约（JSON mode）。`evidence_ids` 由系统自选（`_pick_evidence`），不由 LLM 返回。
 CARD_SCHEMA = {
     "type": "object",
     "properties": {
@@ -33,18 +33,15 @@ CARD_SCHEMA = {
         "core_problems": {"type": "array", "items": {"type": "string"}},
         "dominant_methods": {"type": "array", "items": {"type": "string"}},
         "open_questions": {"type": "array", "items": {"type": "string"}},
-        "evidence_ids": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["label", "core_problems", "dominant_methods",
-                 "open_questions", "evidence_ids"],
+    "required": ["label", "core_problems", "dominant_methods", "open_questions"],
 }
 
 _SYSTEM = (
     "你是研究主题命名器。给一簇论文起名并概括。只依据下面给出的论文"
     "（id + 标题 + 摘要）作判断。输出必须用 JSON：label(一句话主题名)、"
     "core_problems(3-5 个核心问题)、dominant_methods(3-5 个主流方法)、"
-    "open_questions(0-3 个未解问题)、evidence_ids(你依据的论文 id，"
-    "**必须在输入里出现过**，3-6 个)。只说事实，不用形容词堆砌。"
+    "open_questions(0-3 个未解问题)。只概括事实，不用形容词堆砌。"
 )
 
 
@@ -91,10 +88,30 @@ def _validator(allowed: frozenset[str]):
     return _v
 
 
+def _pick_evidence(used: list[str], metric: dict | None, *,
+                   min_n: int = 3, max_n: int = 6) -> tuple[str, ...]:
+    """从实际输入 `used` 里选簇的 representative（质心最近）+ 按序补足，作为卡片证据。
+
+    全部 ∈ `used`（实际发过给 LLM 的成员），保证溯源合法；**不由 LLM 选择**，杜绝编造。
+    """
+    picked = [i for i in ((metric or {}).get("representative_ids") or ()) if i in used]
+    for i in used:
+        if len(picked) >= max_n:
+            break
+        if i not in picked:
+            picked.append(i)
+    if len(picked) < min_n:
+        picked = list(used[:max_n])
+    return tuple(picked)
+
+
 def _metric_of(metric: dict) -> tuple[int, int, VenueProfile]:
-    """从 L2 的 metric dict 还原客观字段（scale / venue）。"""
+    """从 L2 的 metric dict 还原客观字段（scale / venue）。
+
+    ⚠️ `ClusterMetric.to_dict()` 用 `size` 而不是 `scale`（2026-09-27 修）。
+    """
     venue = VenueProfile.from_dict(metric.get("venue") or {})
-    return int(metric.get("scale") or 0), venue
+    return int(metric.get("size") or metric.get("scale") or 0), venue
 
 
 def gen_card(
@@ -121,15 +138,18 @@ def gen_card(
         return ClusterCard(cluster_id=cluster_id, scale=scale, venue=venue,
                            label="", degraded_reason="没有可入输入的成员摘要"), False
 
-    call = client.ask(
-        body,
-        system=_SYSTEM,
-        schema=CARD_SCHEMA,
-        required=("label", "evidence_ids"),
-        validator=_validator(frozenset(used)),
-    )
+    try:
+        call = client.ask(
+            body,
+            system=_SYSTEM,
+            schema=CARD_SCHEMA,
+            required=("label",),
+        )
+    except Exception as e:  # noqa: BLE001 —— 调用失败/非法 JSON：降级不崩
+        return ClusterCard(cluster_id=cluster_id, scale=scale, venue=venue,
+                           label="",
+                           degraded_reason=f"LLM 未产出合规 JSON（{type(e).__name__}）"), False
     data = call.data if call.ok else {}
-
     card = ClusterCard(
         cluster_id=cluster_id,
         scale=scale,
@@ -138,8 +158,8 @@ def gen_card(
         core_problems=tuple(data.get("core_problems") or ()),
         dominant_methods=tuple(data.get("dominant_methods") or ()),
         open_questions=tuple(data.get("open_questions") or ()),
-        evidence_ids=tuple(data.get("evidence_ids") or ()),
-        degraded_reason="" if call.ok else ("两次非法或引用外部 id 的 JSON" if not data else ""),
+        evidence_ids=_pick_evidence(used, metric),
+        degraded_reason="" if call.ok else "两次非法 JSON",
     )
     return card, False
 
@@ -175,7 +195,8 @@ def make_cards(corpus, *, cfg=None, dry_run=False, max_clusters: int | None = No
         cids = sorted(cids)[:max_clusters]
 
     for cid in cids:
-        members = list((members_map.get(str(cid)) or {}).get("members") or [])
+        raw = members_map.get(str(cid)) or []
+        members = raw if isinstance(raw, list) else (raw.get("members") or [])
         if not members:
             continue
         card, cached = gen_card(client, cid, members, corpus,
