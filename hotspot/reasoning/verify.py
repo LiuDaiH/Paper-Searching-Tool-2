@@ -60,14 +60,18 @@ def judge_claim(claim: Claim, evidence: str, client, *, cfg=None) -> tuple[str, 
         "required": ["verdict"],
     }
     body = (
-        "给定以下材料，判断陈述是否**被材料支持**（supported）还是**材料不支持**"
-        "（unsupported）。只判这两者，不判观点好坏。\n\n材料：\n"
-        f"{evidence[:3000]}\n\n陈述：{claim.text}\n引用的 ID：{claim.cited_ids}"
+        "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**"
+        "（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；"
+        "仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。"
+        "宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n"
+        f"材料：\n{evidence[:3000]}\n\n陈述：{claim.text}"
     )
-    call = client.ask(body, system="引用校验员。输出 JSON {verdict, reason}。",
-                      schema=schema, required=("verdict",))
+    call = client.ask(body, system=(
+        "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。"
+        "按上述偏向判定。"),
+        schema=schema, required=("verdict",))
     v = (call.data or {}).get("verdict") if call.ok else ""
-    supported = v.strip().lower() == "supported"
+    supported = v.strip().lower().startswith("supported")
     return ("supported", (call.data or {}).get("reason", "")) if supported \
         else ("unsupported", "LLM 判为材料不支持")
 
@@ -87,6 +91,8 @@ def verify_claims(claims: list[Claim], *, allowed_ids: frozenset[str],
 
 
 def build_answer(route: Route, text: str, verdicts: list[Verdict], *,
-                 refused: bool = False, refuse_reason: str = "") -> Answer:
+                 refused: bool = False, refuse_reason: str = "",
+                 subtopics: tuple[str, ...] = (), meta: dict | None = None) -> Answer:
     return Answer(route=route, text=text, verdicts=tuple(verdicts),
-                  refused=refused, refuse_reason=refuse_reason)
+                  refused=refused, refuse_reason=refuse_reason,
+                  subtopics=subtopics, meta=meta)

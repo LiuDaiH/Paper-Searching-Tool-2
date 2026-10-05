@@ -23,7 +23,7 @@ from typing import Iterable, Iterator, Optional
 
 from .config import load_config
 
-__all__ = ["Paper", "MergedCorpus", "open_corpus"]
+__all__ = ["Paper", "MergedCorpus", "arXivCorpus", "open_corpus", "open_arxiv_corpus"]
 
 #: 英文子串检索用（大小写不敏感，按词匹配以略提升召回）
 _WORD = re.compile(r"[A-Za-z0-9]+")
@@ -31,7 +31,11 @@ _WORD = re.compile(r"[A-Za-z0-9]+")
 
 @dataclass(frozen=True)
 class Paper:
-    """与 dasc 的 Paper 契约对齐的最小实现（保留 `year`）。"""
+    """与 dasc 的 Paper 契约对齐的最小实现（保留 `year`）。
+
+    额外字段（周报 arXiv 语料专用，会议库为空/默认值）：
+    `topics`=arXiv 分类（cs.LG/stat.ML/cs.AI）、`first_seen`=首次入库日期 `YYYY-MM-DD`。
+    """
 
     paper_id: str
     title: str = ""
@@ -41,6 +45,8 @@ class Paper:
     arxiv_id: str = ""
     is_rl: bool = False
     subfields: tuple[str, ...] = ()
+    topics: tuple[str, ...] = ()
+    first_seen: str = ""
 
     @property
     def key(self) -> str:
@@ -66,6 +72,8 @@ def _load_source(path: Path) -> list[Paper]:
                 arxiv_id=r.get("arxiv_id") or "",
                 is_rl=bool(rl.get("is_rl")),
                 subfields=sub,
+                topics=tuple(t for t in (r.get("topics") or []) if t),
+                first_seen=r.get("first_seen") or "",
             ))
     return out
 
@@ -104,14 +112,20 @@ class MergedCorpus:
         return self._by_id.get(paper_id)
 
     def search(self, query: str, k: int = 50) -> list[str]:
-        """轻重：标题/摘要大小写不敏感子串匹配（22,747 篇上每问 O(n)，够用）。"""
+        """轻重：标题/摘要**词级匹配**（22,747 篇上每问 O(n)，够用）。
+
+        ⚠️ 必须是「词级」而非子串：`"rloo" in hay` 会把 `overlook` 里的 `rloo`
+        误当独立词 RLOO（实测 798 篇误报，真 RLOO 仅 4 篇）。这里对 hay 做
+        `_WORD` 词切分后判子集，杜绝被长词吞并。
+        """
         terms = [t for t in _WORD.findall(query.lower()) if t]
         if not terms:
             return []  # 无检索词（如纯中文方向）不匹配任何篇，而不是全命中
+        term_set = set(terms)
         hits: list[str] = []
         for p in self._papers:
             hay = (p.title + " " + (p.abstract or "")).lower()
-            if all(t in hay for t in terms):
+            if term_set <= set(_WORD.findall(hay)):
                 hits.append(p.paper_id)
         return hits[:k]
 
@@ -121,6 +135,13 @@ class MergedCorpus:
             "is_rl": sum(1 for p in self._papers if p.is_rl),
             "pools": {s for p in self._papers for s in p.subfields},
         }
+
+    def new_this_week(self, anchor: Optional[str] = None) -> list[Paper]:
+        """基类兜底：会议库无 `first_seen`（周报字段），恒返回空。
+
+        `arXivCorpus` 覆盖此方法做真实「本周新增」判定。
+        """
+        return []
 
     # ---- 兼容 `with c.lib`（no-op，读 jsonl 无写面） ---------------------- #
 
@@ -137,3 +158,46 @@ def open_corpus(cfg=None) -> MergedCorpus:
     """从 config 的 `corpus.sources` 打开合并语料。"""
     sources = ((cfg or load_config()).get("corpus") or {}).get("sources") or []
     return MergedCorpus(sources)
+
+
+class arXivCorpus(MergedCorpus):
+    """arXiv 周报连续流语料（独立源，共享引擎，规划-接入arXiv周报与发布.md）。
+
+    读周报 `数据/papers.jsonl`。`venue` 恒为 `"arXiv"`，另带 `topics`（arXiv 分类）
+    与 `first_seen`（入库日期）。**不参与跨会三态**——热点轴换成分类/周窗口。
+    检索/统计与 MergedCorpus 同构可复用。
+    """
+
+    def __init__(self, path=None):
+        if path is None:
+            path = ((load_config().get("corpus") or {}).get("arxiv_source"))
+        super().__init__([path] if path else [])
+
+    def new_this_week(self, anchor: Optional[str] = None) -> list[Paper]:
+        """`first_seen` 落在 `anchor`（默认今天）所在 ISO 周的论文。
+
+        用于「本周新增」标注——周报每周 append，这是它相对老库的演进增量。
+        """
+        import datetime as _dt
+        if anchor is None:
+            anchor = _dt.date.today().isoformat()
+        try:
+            y, w, _ = _dt.date.fromisoformat(anchor).isocalendar()
+        except ValueError:
+            return []
+        out = []
+        for p in self._papers:
+            if not p.first_seen:
+                continue
+            try:
+                py, pw, _ = _dt.date.fromisoformat(p.first_seen).isocalendar()
+            except ValueError:
+                continue
+            if (py, pw) == (y, w):
+                out.append(p)
+        return out
+
+
+def open_arxiv_corpus(cfg=None) -> arXivCorpus:
+    """从 config 的 `corpus.arxiv_source` 打开周报语料。"""
+    return arXivCorpus(((cfg or load_config()).get("corpus") or {}).get("arxiv_source"))

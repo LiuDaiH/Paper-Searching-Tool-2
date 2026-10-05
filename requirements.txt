@@ -1,0 +1,16 @@
+# 移动云杯·热点挖掘 服务端依赖（Python）
+# 运行：streamlit run scripts/run_ui.py --server.port 8502
+#
+# ⚠️ 外部依赖（不入 PyPI，需自行准备路径）：
+#   - dasc（大创设施）：D:\大学编程学习\obsidian\dasc，sys.path 接线见 hotspot/__init__.py
+#   - md2vectors（工具/）：库根工具，embedding 用
+#   - G 盘 24+25 会议语料 + arXiv 周报 papers.jsonl（config.corpus.*）
+#   - API key：环境变量（llm.api_key_env / llm_eval.api_key_env / apis.api_key_env），永不落盘
+
+streamlit>=1.30
+numpy>=1.24
+scikit-learn>=1.6        # py3.9 最高 1.6.x；若 >=3.10 建议 >=1.7 消除 future_rf 反序列化警告
+PyYAML>=6.0
+openai>=1.10
+tqdm>=4.60
+requests>=2.28

@@ -328,6 +328,10 @@ class Answer:
     verdicts: tuple[Verdict, ...] = ()
     refused: bool = False
     refuse_reason: str = ""
+    #: 意图驱动路径的子主题卡片（供 UI 展示路由/子主题/分年跨会）
+    subtopics: tuple[str, ...] = ()
+    #: 意图驱动路径的大创附加信息（`rlrag_ranked` 排序 / `key_path`），供评测专项指标
+    meta: dict | None = None
 
     @property
     def n_filtered(self) -> int:

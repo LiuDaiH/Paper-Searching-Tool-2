@@ -19,6 +19,10 @@ corpus:
   sources:
     - G:\rl_data24\资源\papers.jsonl
     - G:\rl_data\资源\papers.jsonl
+  # arXiv 周报连续流（独立源，共享引擎，规划-接入arXiv周报与发布.md）。
+  # venue 恒 "arXiv"；另带 topics(分类) / first_seen(入库日) → 支持「本周新增」。
+  # 只读外部库，本工程一个字都不写它。
+  arxiv_source: D:\大学编程学习\arXiv周报\数据\papers.jsonl
 
 llm:
   base_url: https://api.deepseek.com/v1
@@ -26,11 +30,23 @@ llm:
   model_pro: deepseek-chat      # L5 答案生成
   #  ⚠️ 待核实：现网模型名以官方定价页为准（方案 §待核实事项 2）
   api_key_env: API_KEY          # 用户环境变量名（本项目），只从环境变量读，永不入库、永不落盘
+  # ── 成本估算单价（¥ / 每 1M token）——「待核实」以 DeepSeek 官方定价页为准 ──
+  cost_per_1m_in: 1.0
+  cost_per_1m_out: 2.0
   max_input_chars: 8000         # dasc.llm.client 的「只发摘要」闸；溢出 raise 不截断
   budget:
     max_calls: 2000
     max_tokens: 5000000
     max_usd: null               # 不按钱熔断，按 token
+
+# ── 评测工具用 LLM（大创接入评测，2026-09-30 记录）─────────────
+#   独立于上方 `llm:`（主问答）。供 eval 跑真调用，key 只从环境变量读。
+#   base_url 不含 /chat/completions（dasc client 会拼）。
+llm_eval:
+  base_url: https://zhenze-huhehaote.cmecloud.cn/v1
+  model: deepseek-v4-flash-0731   # 移动云 MaaS · 呼和浩特区域 deepseek-v4-flash（2026-10-01 换）
+  api_key_env: Mobile_trash_API_KEY   # 用户 ADMIN 环境变量名，只读，永不落盘
+  timeout: 600                    # openai 单请求超时（秒）—— 该端点慢，dasc 默认 120 不够
 
 embed:
   # ── 以下三个值来自 dasc/cluster/embed.py，**一个都别改** ──
@@ -68,3 +84,14 @@ spread:
   venue_holdout: NeurIPS        # 跨会留出验证的封存会（方案 §5.4）
   # CoRL 是机器人专会，不属于这条时间轴，另算。
   venue_off_axis: [CoRL]
+
+# ── 大创两线接入主路径的开关（评测 G0-G3，测试计划-大创接入评测.md）──────────
+#   enabled=false = G0 无大创（默认，保持现状）；评测时按组开。
+#   rlrag: 检索候选按 RF 未来被引概率重排 + 簇代表取 RF 最高。
+#   streit_garg: 对检索集合算 MPS 关键路径（该读顺序），供上下文构建/展示。
+rlrag:
+  enabled: false
+  k: 300              # 参与 RF 排序的候选数上限（超过按原始序截前 k）
+streit_garg:
+  enabled: false
+  algo: mag_sub

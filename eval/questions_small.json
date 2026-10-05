@@ -1,0 +1,10 @@
+[
+  {"id": "g01", "type": "global", "question": "2025 年 RLHF 方向最火的是什么？"},
+  {"id": "g02", "type": "global", "question": "offline RL 最近的热点主题有哪些？"},
+  {"id": "g11", "type": "global", "question": "过程监督 / token 级奖励（process supervision）的研究热点？"},
+  {"id": "l01", "type": "local", "question": "RLOO 的核心创新点是什么？"},
+  {"id": "l04", "type": "local", "question": "Dreamer 系列的模型结构要点是什么？"},
+  {"id": "r01", "type": "refuse", "question": "量子计算的退相干抑制有什么热点？"},
+  {"id": "rel01", "type": "relation", "question": "PPO 和 GRPO 的共同来源是什么？"},
+  {"id": "rel02", "type": "relation", "question": "RLHF 与 DPO 的共同来源是什么？"}
+]
