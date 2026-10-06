@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
 from .config import load_config
+from . import HOTSPOT_ROOT  # noqa: E402 —— 项目根，供相对语料路径解析
 
 __all__ = ["Paper", "MergedCorpus", "arXivCorpus", "open_corpus", "open_arxiv_corpus"]
 
@@ -155,9 +156,11 @@ def _norm(s: str) -> str:
 
 
 def open_corpus(cfg=None) -> MergedCorpus:
-    """从 config 的 `corpus.sources` 打开合并语料。"""
+    """从 config 的 `corpus.sources` 打开合并语料。相对路径以项目根(HOTSPOT_ROOT)为基准。"""
     sources = ((cfg or load_config()).get("corpus") or {}).get("sources") or []
-    return MergedCorpus(sources)
+    resolved = [str(Path(s) if Path(s).is_absolute() else HOTSPOT_ROOT / s)
+                for s in sources]
+    return MergedCorpus(resolved)
 
 
 class arXivCorpus(MergedCorpus):
@@ -199,5 +202,8 @@ class arXivCorpus(MergedCorpus):
 
 
 def open_arxiv_corpus(cfg=None) -> arXivCorpus:
-    """从 config 的 `corpus.arxiv_source` 打开周报语料。"""
-    return arXivCorpus(((cfg or load_config()).get("corpus") or {}).get("arxiv_source"))
+    """从 config 的 `corpus.arxiv_source` 打开周报语料。相对路径以项目根为基准。"""
+    src = ((cfg or load_config()).get("corpus") or {}).get("arxiv_source")
+    if src:
+        src = str(Path(src) if Path(src).is_absolute() else HOTSPOT_ROOT / src)
+    return arXivCorpus(src)

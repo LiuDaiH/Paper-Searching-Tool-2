@@ -16,12 +16,18 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Iterable
 
 from .config import load_config, paths_from
 
 __all__ = ["compute_key_path", "KeyPathResult", "PREP_DIR"]
+
+
+#: 单次 MPS 的计算时间预算（秒）：超时抛 MPSBudgetExceeded，由 compute_key_path 捕获降级。
+#: 彻底根治卡死（算法内预算），而不是线程超时后仍在后台空转。
+MPS_TIMEOUT = float(__import__("os").environ.get("MPS_TIMEOUT", "30"))
 
 
 #: rlRAG 前置数据（`obsidian/dasc/_out/rl_prep/`）
@@ -69,6 +75,7 @@ def compute_key_path(pool_ids: Iterable[str], *, cfg=None, algo: str = "mag_sub"
     from dasc.mps.instance import build_instance
     from dasc.mps.algorithms import (mag_submodular, scaffold_additive,
                                      mag_additive, random_submodular)
+    from dasc.mps.core import MPSBudgetExceeded
 
     prep = _load_prep()
     pool_ids = list(dict.fromkeys(pool_ids))
@@ -80,6 +87,9 @@ def compute_key_path(pool_ids: Iterable[str], *, cfg=None, algo: str = "mag_sub"
             "不是'无此方向'，是依赖/主题结构在该子集上不可用。"))
 
     mps = build_instance(prep, seeds=seeds, max_nodes=max_nodes)
+    # 预算：算法内部 gtest/cl/ideal 不断检查，超时即抛 MPSBudgetExceeded（可取消，不留后台线程）
+    mps.budget_clock.deadline = time.monotonic() + MPS_TIMEOUT
+
     algorithms = {
         "mag_sub": lambda: mag_submodular(mps),
         "mag_add": lambda: mag_additive(mps, _icf_weights(mps)),
@@ -87,7 +97,13 @@ def compute_key_path(pool_ids: Iterable[str], *, cfg=None, algo: str = "mag_sub"
         "rand_sub": lambda: random_submodular(mps),
     }
     fn = algorithms.get(algo, algorithms["mag_sub"])
-    r = fn()
+    try:
+        r = fn()
+    except MPSBudgetExceeded as e:
+        # 超预算 → 诚实降级（不是空结果，是"这次没算完"）
+        return KeyPathResult(seed_count=len(seeds), note=(
+            f"MPS 计算超出时间预算（{MPS_TIMEOUT:.0f}s）——{e}；"
+            "图过大/过稠，已跳过。可设 MPS_TIMEOUT 提高或缩小输入。"))
 
     if not mps.feasible(r.word):
         return KeyPathResult(seed_count=len(seeds), note=(
