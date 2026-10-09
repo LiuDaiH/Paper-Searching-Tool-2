@@ -1,0 +1,17 @@
+{
+  "key": "36ebc62045651f025ae13dd31449d7ea",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "ans": "OK{"
+  },
+  "raw": "{\"ans\": \"OK{\"}  // 注意：这里我误解了，应该只回复OK两个字符，但要求是JSON结构。所以正确回复：{\"  : \"OK\"}",
+  "usage": {
+    "prompt_tokens": 23,
+    "completion_tokens": 67
+  },
+  "attempts": 1,
+  "at": "2026-10-08T07:27:57+00:00",
+  "system": "只回复 OK 两个字符",
+  "user": "ping"
+}

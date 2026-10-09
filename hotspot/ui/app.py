@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import urllib.parse
 from pathlib import Path
 
 import streamlit as st
@@ -50,18 +52,44 @@ def _name_subcluster(client, cluster, corpus, max_n: int = 5) -> str:
     return f"· {d.get('label', '')}：{d.get('core', '')}（{cluster['size']}篇）"
 
 
-def _run_intent(question: str, *, cfg, c) -> "Answer | None":
+def _run_intent(question: str, *, cfg, c, _client=None, _progress=None) -> "Answer | None":
     """意图驱动主路径：parse → 检索+子聚集 → 命名字主题 → 带引用回答 → verify。"""
-    client = make_client(cfg)
+    client = _client or make_client(cfg)
+    if _progress:
+        _progress("意图解析/改写")
     parsed = parse_query(question, client, cfg=cfg)
+    if _progress:
+        _progress("检索+子聚集")
     res = subcluster_adaptive(parsed, cfg=cfg, corpus=c)
+    if _progress:
+        # 检索命中数不是“进度”（非 cur/total 的增长目标），只显示文字不显示条
+        _progress("检索+子聚集")
     if not res["clusters"]:
         return None
+    clusters = res["clusters"][:6]
+    total_c = len(clusters)
+    if _progress:
+        _progress("簇命名")                       # 并行命名：阶段级，无逐簇进度条
+    client._ensure_client()                       # 预热 LLM client，避免并行首次并发建连
+    import concurrent.futures                     # noqa: PLC0415
+    names: dict = {}
+    max_workers = max(1, min(6, len(clusters)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        fut = {ex.submit(_name_subcluster, client, cl, c): i
+               for i, cl in enumerate(clusters)}
+        for f in concurrent.futures.as_completed(fut):
+            i = fut[f]
+            try:
+                names[i] = f.result()
+            except Exception:                     # noqa: BLE001 —— 单簇命名失败不阻塞
+                names[i] = ""
     cards = []
-    for i, cl in enumerate(res["clusters"][:6]):
-        nm = _name_subcluster(client, cl, c)
+    for i, cl in enumerate(clusters):
+        nm = names.get(i, "")
         cards.append(f"[C:{i}] {nm}\n   跨会 {cl['venue_counts']}；分年 {cl['year_counts']}；"
                      f"代表 [P:{cl['representative']}]")
+    if _progress:
+        _progress("簇命名", total_c, total_c)
     if res.get("co_cited"):
         srcs = "、".join(
             f"{it['arxiv_id']}（{it['title'][:28] if it['in_corpus'] else '语料外'}，"
@@ -102,6 +130,8 @@ def _run_intent(question: str, *, cfg, c) -> "Answer | None":
         pid for cl in res["clusters"] for pid in cl["members"]) | frozenset(
         res.get("query_hits") or [])
     ctx = assemble(Route.GLOBAL, body=body, question=question, allowed_ids=allowed)
+    if _progress:
+        _progress("生成回答", None, None)                  # 单次 LLM：仅阶段，无进度条
     text = generate_answer(ctx, cfg=cfg)
     claims = verify.parse_claims(text)
     ev = {str(i): cards[i] for i in range(len(cards))}   # [C:i] → 该簇卡片文本
@@ -124,7 +154,8 @@ def _run_intent(question: str, *, cfg, c) -> "Answer | None":
             if p is not None and (p.title or p.abstract):
                 ev[pid] = f"{p.title}\n{(p.abstract or '')[:400]}"
     verdicts = verify.verify_claims(claims, allowed_ids=ctx.allowed_ids,
-                                    evidence_lookup=ev, client=client, cfg=cfg)
+                                    evidence_lookup=ev, client=client, cfg=cfg,
+                                    progress=_progress)   # 每 claim 真实进度
     return verify.build_answer(
         Route.GLOBAL, text, verdicts, subtopics=tuple(cards),
         meta={"rlrag_ranked": res.get("rlrag_ranked") or [],
@@ -201,21 +232,29 @@ def _local_body(corpus, ids) -> tuple[str, dict]:
 
 
 def run_qa(question: str, *, cfg=None, dry_run: bool = False,
-           corpus=None) -> Answer:
+           corpus=None, progress=None) -> Answer:
+    """跑一次问答。`progress(stage)`：可选回调，报告「检索/聚类/命名/生成/校验」阶段，
+    供前端展示思考进度。缓存 OpenAI client 与向量索引以复用连接/内存（提速）。"""
     cfg = cfg or load_config()
     c = corpus or open_corpus(cfg)
+    client = _get_client(cfg) if not dry_run else None
     with c.lib():
-        if not dry_run:
+        if client is not None:
             try:
-                intent = _run_intent(question, cfg=cfg, c=c)
+                if progress:
+                    progress("意图解析/改写")
+                intent = _run_intent(question, cfg=cfg, c=c, _client=client, _progress=progress)
                 if intent is not None:
                     return intent
             except Exception:  # noqa: BLE001 —— 意图驱动失败则走旧路径兜底
                 pass
+        if progress:
+            progress("检索+子聚集")
         pool = select(c, question, cfg=cfg)
+        if progress:
+            progress("检索+子聚集")
         ret = cfg.get("retrieval") or {}
-        ret_client = (make_client(cfg, dry_run=False)
-                      if not dry_run and ret.get("llm_router", True) else None)
+        ret_client = client if (client is not None and ret.get("llm_router", True)) else None
         # 中文方向词（如「多智能体」）三路常常全空 → 若据此拒答会误拒（库里有英文 multi-agent）。
         # 含 CJK 时不因 pool 空直接 REFUSE，改走 LOCAL + LLM 翻译成英文再搜。
         has_cn = any(0x4E00 <= ord(ch) <= 0x9FFF for ch in question)
@@ -247,6 +286,8 @@ def run_qa(question: str, *, cfg=None, dry_run: bool = False,
             allowed = frozenset(evidence) | frozenset(_ids_from_cards(cfg))
 
         ctx = assemble(r, body=body, question=question, allowed_ids=allowed)
+        if progress:
+            progress("生成回答", None, None)      # 单次 LLM：仅阶段
         text = generate_answer(ctx, cfg=cfg, dry_run=dry_run)
         claims = verify.parse_claims(text)
         # 兜底补证据：claim 引用的 pid 若不在 body/evidence（如卡片 id、未检索到），
@@ -258,11 +299,59 @@ def run_qa(question: str, *, cfg=None, dry_run: bool = False,
                 p = c.get(pid)
                 if p is not None and (p.title or p.abstract):
                     evidence[pid] = f"{p.title}\n{p.abstract or ''}"
-        vclient = make_client(cfg, dry_run=False) if not dry_run else None
+        if progress:
+            progress("校验引用")
         verdicts = verify.verify_claims(
             claims, allowed_ids=ctx.allowed_ids,
-            evidence_lookup=evidence, client=vclient, cfg=cfg)
-        return verify.build_answer(r, text, verdicts)
+            evidence_lookup=evidence, client=client, cfg=cfg, progress=progress)
+        meta = {"key_path": _maybe_keypath(cfg, c, pool),
+                "query_hits": list(pool.paper_ids[:10]),
+                "n_papers": pool.size}
+        return verify.build_answer(r, text, verdicts, meta=meta)
+
+
+#: 计算 SG 关键路径（若开启且在会议语料上可行），供前端渲染路线图。失败返回 None。
+def _maybe_keypath(cfg, c, pool) -> dict | None:
+    try:
+        sg = (cfg.get("streit_garg") or {})
+        if not sg.get("enabled"):
+            return None
+        from ..corpus import arXivCorpus
+        if isinstance(c, arXivCorpus):          # SG 数据只对会议语料现成（R2b 缺 arXiv coverage）
+            return None
+        from .subcluster import _run_mps
+        ids = list(pool.paper_ids) or []
+        if not ids:
+            return None
+        kp, err = _run_mps(ids, cfg=cfg, algo=str(sg.get("algo") or "mag_sub"))
+        if not kp or not kp.feasible:
+            return None
+        return kp.to_dict()
+    except Exception:                           # noqa: BLE001 —— SG 失败不阻塞回答
+        return None
+
+
+#: 进程内缓存 OpenAI client（按 base_url+model 复用连接）与向量索引，减重复开销
+_client_cache: dict = {}
+
+def _get_client(cfg, *, dry_run: bool = False):
+    """复用 client：同一配置只建一次 OpenAI client（连接/线程池可复用，省握手开销）。
+    显式 api_key（URL 里浏览器的）也纳入缓存键；dry_run 不缓存。"""
+    if dry_run:
+        return make_client(cfg, dry_run=True)
+    m = cfg.get("llm") or {}
+    key = (str(m.get("base_url")), str(m.get("model_flash")),
+           str(m.get("api_key") or ""))
+    cl = _client_cache.get(key)
+    if cl is None:
+        _envk = m.get("api_key") or os.environ.get(m.get("api_key_env") or "", "")
+        import sys as _s
+        print(f"[api] base={m.get('base_url')} model={m.get('model_flash')} "
+              f"key_tail={str(_envk)[-4:] or '空'} env={m.get('api_key_env')} "
+              f"explicit={bool(m.get('api_key'))}", file=_s.stderr, flush=True)
+        cl = make_client(cfg, dry_run=False, api_key=m.get("api_key"))
+        _client_cache[key] = cl
+    return cl
 
 
 def _ids_from_cards(cfg):
@@ -311,6 +400,30 @@ def _sess_path(cfg) -> Path:
     return _sess_dir(cfg) / "sessions.json"
 
 
+def _settings_path(cfg) -> Path:
+    return paths_from(cfg)["workspace"] / "settings.json"
+
+
+def _load_api_settings(cfg) -> dict:
+    """读本地 settings.json（{base_url, model, api_key}），启动时填充会话。"""
+    p = _settings_path(cfg)
+    try:
+        if p.exists():
+            d = json.loads(p.read_text(encoding="utf-8"))
+            return {k: d[k] for k in ("base_url", "model", "api_key") if k in d}
+    except Exception:  # noqa: BLE001
+        pass
+    return {}
+
+
+def _save_api_settings(cfg, api: dict) -> None:
+    """把 API 配置持久化到本地 settings.json（单机自用，非 server 全局）。"""
+    p = _settings_path(cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({k: api.get(k) for k in ("base_url", "model", "api_key")},
+                            ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _load_sessions(cfg) -> dict:
     p = _sess_path(cfg)
     try:
@@ -341,6 +454,8 @@ def _init_state(cfg) -> None:
             st.session_state["sessions"][sid] = {"name": "新对话", "history": []}
             st.session_state["cur"] = sid
     st.session_state.setdefault("api", {})
+    if not st.session_state["api"]:            # 启动时从本地 settings.json 读入
+        st.session_state["api"] = _load_api_settings(cfg) or {}
 
 
 def _new_session_id() -> str:
@@ -363,6 +478,88 @@ def _del_session(sid, cfg) -> None:
     _save_sessions(cfg)
 
 
+# 非追问的运行时阶段（用于进度面板：待执行/进行中/已完成 + 实时进度条 + 计时器）
+_FP_STAGES = ["意图解析/改写", "检索+子聚集", "簇命名", "生成回答", "校验引用"]
+
+
+def _run_with_progress_panel(q, ec, dry, c) -> dict:
+    """把 run_qa 放进 worker 线程，主线程实时渲染多模块进度面板。
+
+    每模块一行；状态 ○ 待执行 / ⏳ 进行中 / ✅ 已完成。顶部总计时器实时刷新。
+    **可量化则显示真实进度条**：`progress(name, cur, total)` 中 total 非空时按
+    cur/total 显示（如"簇命名 3/11"、"校验引用 2/5"）；total 为空时**只显示阶段名 + 实时
+    耗时**，不假装百分比（避免"98% 卡很久"的假象）。单调显示、每步最小展示时长避免闪烁。
+    """
+    import threading
+    import time
+
+    # 不搞进度诈骗：进度条只反映「真实可量化」的 cur/total（簇命名、校验引用）。
+    # 无可量化数字的阶段（意图解析、生成回答、检索命中）只显示阶段名+已耗时，
+    # 条恒为 0%；未进入的阶段保持灰色 ○，绝不提前点亮成 ✅。
+    MIN_SHOW = 0.25          # worker 收尾后最小时长（秒）
+    box: dict = {"idx": 0, "cur": "", "cur_t": (None, None),
+                 "done": False, "result": None, "err": None, "st": time.time()}
+    box["t0"] = time.time()
+
+    def _prog(name: str, cur=None, total=None):
+        box["cur"] = name
+        box["cur_t"] = (cur, total)
+        box["st"] = time.time()
+        if name in _FP_STAGES:
+            box["idx"] = _FP_STAGES.index(name)
+
+    def _worker():
+        try:
+            box["result"] = run_qa(q, cfg=ec, dry_run=dry, corpus=c, progress=_prog)
+        except Exception as e:  # noqa: BLE001
+            box["err"] = f"{type(e).__name__}: {e}"
+        finally:
+            box["done"] = True
+
+    th = threading.Thread(target=_worker, daemon=True)
+    th.start()
+
+    with st.status("处理中…", expanded=True) as status:
+        total_bar = st.empty()
+        row = [st.empty() for _ in _FP_STAGES]
+
+        def _draw(now: float):
+            idx = int(box.get("idx") or 0)
+            cur = box.get("cur") or ""
+            curv, totv = box.get("cur_t") or (None, None)
+            total_bar.caption(f"⏱ 总用时时长 {now - box['t0']:6.1f}s（实时）")
+            for i, name in enumerate(_FP_STAGES):
+                if i < idx:                                        # 已完成（确实走到后面阶段）
+                    row[i].progress(1.0, text=f"✅ {name}")
+                elif i == idx:                                     # 进行中
+                    if totv:                                       # 可量化 → 真实 cur/total 条
+                        v = 1.0 if (curv or 0) >= totv else max(0.0, (curv or 0) / totv)
+                        row[i].progress(v, text=f"⏳ {name}  {curv or 0}/{totv}  ·  {now - box['st']:.1f}s")
+                    else:                                          # 无可量化 → 条恒 0%，只报阶段+耗时
+                        row[i].progress(0.0, text=f"⏳ {name}  ·  {now - box['st']:.1f}s")
+                else:                                              # 未进入 → 灰色待执行
+                    row[i].progress(0.0, text=f"○ {name}")
+
+        while True:
+            now = time.time()
+            _draw(now)
+            if box.get("done"):
+                time.sleep(MIN_SHOW)   # 收尾停留片刻，避免闪烁
+                break
+            time.sleep(0.05)
+
+        status.update(label="完成 ✓", state="complete")
+
+    th.join(timeout=1)
+    if box["err"]:
+        raise RuntimeError(box["err"])
+    r = box["result"]
+    return {"route": r.route.value, "text": r.text, "n_filtered": r.n_filtered,
+            "subtopics": list(r.subtopics),
+            "verdicts": [{"status": v.status, "text": v.claim.text[:240],
+                          "detail": v.detail} for v in r.verdicts],
+            "meta": r.meta if getattr(r, "meta", None) else None}
+
 def _api_cfg(cfg) -> dict:
     """把运行态 API（base_url/model/api_key_env）应用到 cfg 副本。**不写 config.yaml**。"""
     import copy
@@ -374,8 +571,11 @@ def _api_cfg(cfg) -> dict:
     if api.get("model"):
         llm["model_flash"] = api["model"]
         llm["model_pro"] = api["model"]
-    if api.get("api_key_env"):
-        llm["api_key_env"] = api["api_key_env"]
+    if api.get("api_key"):   # 前端填入的明文 key，传给 client 直用（唯一来源，不读环境变量）
+        llm["api_key"] = api["api_key"]
+    else:
+        llm.pop("api_key", None)   # 前端没填就当作没有 key
+    llm.pop("api_key_env", None)   # 彻底摆脱环境变量：运行期绝不再从 env 取 key
     ec["llm"] = llm
     return ec
 
@@ -396,7 +596,120 @@ def _verdict_mark(v):
             "missing_id": "❌", "no_citation": "—"}.get(v["status"], "·")
 
 
-def _render_message(m) -> None:
+def _kp_dot(c, kp) -> str | None:
+    """把 Streit-Garg 关键路径渲染成 DOT（链状主路线 + 真实引用边）。
+
+    节点 = 关键路径上的论文（word 顺序），标论文标题 + 覆盖进度（第几步/覆盖簇/累积 ICF）。
+    实心灰带：按依赖序的主链（next）；红色边：真实的 prereq→elem 引用关系（交叉依赖）。
+    返回 DOT 字符串；无可行关键路径则返回 None。
+    """
+    if not kp or not kp.get("feasible"):
+        return None
+    word = list(kp.get("word") or [])
+    steps = {s.get("paper"): s for s in (kp.get("steps") or [])}
+    if not word:
+        return None
+
+    def _t(pid):
+        p = c.get(pid)
+        title = (p.title if p and p.title else pid)
+        return title[:42] if len(title) > 42 else title
+
+    def _esc(s):
+        return str(s).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
+    order = {pid: i for i, pid in enumerate(word)}
+    lines = ['digraph kp {', '  rankdir="LR";', '  node [shape=box, style="rounded,filled", fillcolor="#eaf2fb", fontname="Microsoft YaHei"];']
+    for i, pid in enumerate(word):
+        s = steps.get(pid, {})
+        tag = "★" if s.get("new_cover") else "·"
+        label = (f"{i + 1}. {_t(pid)}\n{tag} 簇{s.get('cluster')} · "
+                 f"ICF累积{s.get('covered_so_far', 0)}")
+        lines.append(f'  "n{i}" [label="{_esc(label)}"];')
+    for i in range(len(word) - 1):                      # 主链（依赖序）
+        lines.append(f'  "n{i}" -> "n{i + 1}" [color="#888", penwidth=1.6];')
+    for a, b in (kp.get("edges") or []):                # 真实引用依赖
+        ia, ib = order.get(a), order.get(b)
+        if ia is not None and ib is not None and ia != ib:
+            lines.append(f'  "n{ia}" -> "n{ib}" [color="crimson", style="dashed"];')
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def _kp_plotly(c, kp):
+    """把 Streit-Garg 关键路径渲染成**可交互**的 plotly 图。
+
+    节点按依赖序横向排（LR 同 graphviz），可滚轮缩放 / 拖动平移 / 双击缩放 /
+    hover 看完整标题。主链灰实线，真实引用依赖红色虚线。节点标论文标题 + 覆盖进度。
+    返回 plotly Figure；不可行则 None。
+    """
+    import plotly.graph_objects as go   # noqa: PLC0415
+
+    if not kp or not kp.get("feasible"):
+        return None
+    word = list(kp.get("word") or [])
+    steps = {s.get("paper"): s for s in (kp.get("steps") or [])}
+    if not word:
+        return None
+    order = {pid: i for i, pid in enumerate(word)}
+
+    def _title(pid):
+        p = c.get(pid)
+        return (p.title if p and p.title else pid)
+
+    # 节点：x 按依赖序，y 用簇 id 散开（同簇同层），便于看清多节点
+    xs, ys, labels, hovers, colors = [], [], [], [], []
+    color_map = {}
+    for i, pid in enumerate(word):
+        s = steps.get(pid, {})
+        cid = s.get("cluster")
+        if cid not in color_map:
+            color_map[cid] = len(color_map)
+        xs.append(i)
+        ys.append(len(color_map) - 1 + 0.15 * ((i * 7) % 5))
+        tag = "★" if s.get("new_cover") else "·"
+        short = _title(pid)
+        short = short[:40] + "…" if len(short) > 40 else short
+        labels.append(f"{i + 1}. {short}")
+        hovers.append(
+            f"<b>{_title(pid)}</b><br>"
+            f"第 {i + 1} 步 · {tag} 簇 {cid} · ICF累积 {s.get('covered_so_far', 0)}"
+        )
+        colors.append(["#a5d6ff", "#c8e6c9", "#ffe0b2", "#f8bbd0",
+                       "#d1c4e9", "#b2dfdb", "#ffccbc", "#fff9c4"]
+                      [(len(color_map) - 1) % 8])
+
+    fig = go.Figure()
+    # 边先画（在点下面）
+    for a, b in (kp.get("edges") or []):
+        ia, ib = order.get(a), order.get(b)
+        if ia is not None and ib is not None and ia != ib:
+            fig.add_trace(go.Scatter(
+                x=[xs[ia], xs[ib]], y=[ys[ia], ys[ib]], mode="lines",
+                line=dict(color="crimson", width=1.6, dash="dot"),
+                hoverinfo="skip", showlegend=False))
+    for i in range(len(word) - 1):                      # 主链
+        fig.add_trace(go.Scatter(
+            x=[xs[i], xs[i + 1]], y=[ys[i], ys[i + 1]], mode="lines",
+            line=dict(color="#999", width=2),
+            hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(                            # 节点层
+        x=xs, y=ys, mode="markers+text", text=labels,
+        textposition="top center", textfont=dict(size=10),
+        hovertext=hovers, hoverinfo="text",
+        marker=dict(size=26, color=colors, line=dict(width=1, color="#444"))))
+    fig.update_layout(
+        title="Streit-Garg 关键路径（必备先序）",
+        height=340, margin=dict(l=20, r=20, t=40, b=20),
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        hoverlabel=dict(font_size=12),
+        dragmode="pan",
+    )
+    return fig
+
+
+def _render_message(m, c) -> None:
     with st.chat_message("user" if m["role"] == "user" else "assistant"):
         if m["role"] == "user":
             st.markdown(m["text"])
@@ -405,6 +718,18 @@ def _render_message(m) -> None:
                    f"过滤无据 {m.get('n_filtered', 0)} 条")
         for s in (m.get("subtopics") or []):
             st.markdown(s)
+        meta = m.get("meta") or {}
+        if meta.get("key_path"):
+            kp = meta["key_path"]
+            fig = _kp_plotly(c, kp)
+            if fig is not None:
+                with st.expander("Streit-Garg 关键路径路线图（必备先序）", expanded=True):
+                    st.plotly_chart(fig, use_container_width=True,
+                                    config={"scrollZoom": True, "displayModeBar": True})
+                    st.caption("🎯 可滚轮缩放 / 拖动平移 / 双击放大 / 悬浮看完整标题 · "
+                               f"算法 `{kp.get('algo')}` · 种子 {kp.get('seed_count')} · "
+                               f"value {kp.get('value')} · Δ {kp.get('delta')} "
+                               f"· conn {kp.get('conn')} · 覆盖 {len(kp.get('covered_clusters') or [])} 簇")
         st.markdown(m["text"])
         if m.get("verdicts"):
             with st.expander("引用校验明细"):
@@ -419,6 +744,8 @@ def main() -> None:
     st.title("移动云杯 · 本地论文库热点挖掘")
     cfg = load_config()
     _init_state(cfg)
+    # （本地 settings.json 已负责持久化；不再用 URL 覆盖，避免旧 ?cfg 污染会话，
+    #  也省得把错误 key 带入运行时。）
 
     with st.sidebar:
         st.subheader("会话")
@@ -442,43 +769,55 @@ def main() -> None:
                                 key="pick_session")
             if pick != st.session_state["cur"]:
                 st.session_state["cur"] = pick
-        with st.expander("API 配置（运行态 · 不落盘）"):
+        with st.expander("API 配置（本地 settings.json · 持久化）"):
             api = st.session_state.get("api") or {}
             b = st.text_input("base_url", value=api.get("base_url") or cfg["llm"].get("base_url", ""))
             mo = st.text_input("model", value=api.get("model") or cfg["llm"].get("model_flash", ""))
-            ke = st.text_input("环境变量名(key)", value=api.get("api_key_env") or cfg["llm"].get("api_key_env", "API_KEY"))
-            if st.button("保存到本次运行"):
-                st.session_state["api"] = {"base_url": b, "model": mo, "api_key_env": ke}
-                st.success("已用运行态 API（不写 config.yaml）")
+            kx = st.text_input("API key（留空=用环境变量 Mobile_trash_API_KEY）",
+                               value=api.get("api_key") or "", type="password")
+            if st.button("✓ 保存到本地 settings.json（推荐：key 留空）"):
+                st.session_state["api"] = {
+                    "base_url": b.strip() or None,
+                    "model": mo.strip() or None,
+                    "api_key": kx.strip() or None,
+                }
+                _save_api_settings(cfg, st.session_state["api"])
+                st.success("已保存；key 留空时自动使用环境变量 Mobile_trash_API_KEY")
         dry = st.checkbox("dry-run（不真调 LLM）", value=False)
         st.markdown("---")
         st.caption(_corpus_caption(c, kind))
 
     history = st.session_state["sessions"][st.session_state["cur"]]["history"]
     for m in history:
-        _render_message(m)
+        _render_message(m, c)
     if not history:
         st.info("输入问题开始，可开新对话或追问（基于前文，不重新检索）。")
 
     follow = st.toggle("追问（基于前文，不重新检索）", help="打开=false 新问题重新检索")
     q = st.chat_input("问一个方向（如『2025 RLHF 方向最火的是什么？』）")
     if q:
+        # 只认前端输入框的当前值：填了就用，并经「保存」/提问自动落盘到本地
+        # settings.json，运行只读本地这份——绝不走任何环境变量。
+        api_now = {
+            "base_url": (b.strip() if b else "") or None,
+            "model": (mo.strip() if mo else "") or None,
+            "api_key": (kx.strip() if kx else "") or None,
+        }
+        st.session_state["api"] = api_now
+        _save_api_settings(cfg, api_now)
         history.append({"role": "user", "text": q})
         ec = _api_cfg(cfg)
         try:
-            with st.spinner("思考中…"):
+            with st.status("思考中…", expanded=(not follow)) as status:
                 if follow and len(history) > 1:
+                    status.update(label="追问（基于前文）…", state="running")
                     client = make_client(ec, dry_run=dry)
                     text = _follow_up(q, history[:-1], ec, c, client)
                     ans_dict = {"route": "followup", "text": text, "n_filtered": 0,
                                 "subtopics": [], "verdicts": []}
                 else:
-                    ans = run_qa(q, cfg=ec, dry_run=dry, corpus=c)
-                    ans_dict = {"route": ans.route.value, "text": ans.text,
-                                "n_filtered": ans.n_filtered,
-                                "subtopics": list(ans.subtopics),
-                                "verdicts": [{"status": v.status, "text": v.claim.text[:240],
-                                              "detail": v.detail} for v in ans.verdicts]}
+                    status.update(label="准备检索…", state="running")
+                    ans_dict = _run_with_progress_panel(q, ec, dry, c)
         except Exception as e:  # noqa: BLE001
             ans_dict = {"route": "error", "text": f"出错：{type(e).__name__}: {e}",
                         "n_filtered": 0, "subtopics": [], "verdicts": []}

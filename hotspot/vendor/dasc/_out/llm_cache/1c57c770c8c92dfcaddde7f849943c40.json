@@ -1,0 +1,18 @@
+{
+  "key": "1c57c770c8c92dfcaddde7f849943c40",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料明确指出多智能体设置引发了对博弈均衡问题的需求，而有限和单调包含问题建模了广泛的均衡问题，因此该陈述与材料一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料明确指出多智能体设置引发了对博弈均衡问题的需求，而有限和单调包含问题建模了广泛的均衡问题，因此该陈述与材料一致。\"}",
+  "usage": {
+    "prompt_tokens": 502,
+    "completion_tokens": 133
+  },
+  "attempts": 1,
+  "at": "2026-10-08T12:48:40+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nVariance Reduced Halpern Iteration for Finite-Sum Monotone Inclusions\nMachine learning approaches relying on such criteria as adversarial robustness or multi-agent settings have raised the need for solving game-theoretic equilibrium problems. Of particular relevance to these applications are methods targeting finite-sum structure, which generically arises in empirical variants of learning problems in these contexts. Further, methods with computable approximation errors are highly desirable, as they provide verifiable exit criteria. Motivated by these applications, we study finite-sum monotone inclusion problems, which model broad classes of equilibrium problems. Our main contributions are variants of the classical Halpern iteration that employ variance reduction to obtain improved complexity guarantees in which $n$ component operators in the finite sum are ``on average'' either cocoercive or Lipschitz continuous and monotone, with parameter $L$. The resulting oracle complexity of our methods, which provide guarantees for the last iterate and for a (computable) operator norm residual, is $\\widetilde{\\mathcal{O}}( n + \\sqrt{n}L\\varepsilon^{-1})$, which improves upon existing methods by a factor up to $\\sqrt{n}$. This constitutes the first variance reduction-type result for general finite-sum monotone inclusions and for more specific problems such as convex-concave optimization when operator norm residual is the optimality measure. We further argue that, up to poly-logarithmic factors, this complexity is unimprovable in the monotone Lipschitz setting; i.e., the provided result is near-optimal.\n\n陈述：有限和单调包含问题与多智能体设置相关 [P:orid:0i6Z9N5MLY]。"
+}

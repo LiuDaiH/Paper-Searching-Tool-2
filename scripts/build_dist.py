@@ -60,7 +60,7 @@ streamlit run scripts/run_ui.py --server.port 8502
 | 会议语料 24+25 | `G:\\rl_data24\\资源\\papers.jsonl`、`G:\\rl_data\\资源\\papers.jsonl` | 会议库（22,747 篇）|
 | arXiv 周报语料 | `D:\\大学编程学习\\arXiv周报\\数据\\papers.jsonl` | arXiv 独立源（4,369 篇）|
 | bge-m3 权重 | `D:\\hf_cache`（HF_HOME，~2.3GB）| embedding（离线）|
-| 大创 dasc 库 | `D:\\大学编程学习\\obsidian\\dasc`（+ `工具\\md2vectors.py`）| 聚类/MPS/rlRAG/LLM client |
+| dasc 算法 | **已 vendor 进 `hotspot/vendor/dasc/`（自包含，无需外部 dasc）**；`工具/md2vectors.py` 仍需外部 | 聚类/MPS/rlRAG/LLM client |
 | API key | 环境变量 `Mobile_trash_API_KEY` 等（`config.yaml` 的 `*.api_key_env` 指定变量名）| LLM，**永不落盘** |
 
 > 若在某机器没有 G 盘 24+25 或 arXiv 周报，可在 `config.yaml` 的 `corpus.sources` /
@@ -95,6 +95,12 @@ python scripts/update_arxiv_weekly.py          # 之后每周(只处理新增，
 ## 6. 说明
 - workspace/ 属数据产物，可全量重建，不入 git。
 - 本包为服务端源码交付；客户端 = 浏览器，无需单独打包。
+
+## 7. 常见问题：网页为什么不能改配置？
+- 本应用是**单体**：`config.yaml` 只在服务端进程启动时读一次（`load_config()`），网页（浏览器）
+  只是 UI，JS 出于安全无法写服务器磁盘，所以**不能从网页改 `config.yaml`**。
+- 要改配置：① 编辑服务器上 `config.yaml` 后重启 `streamlit`；② 或在前端「运行态设置」
+  （API key 等）改——只改内存、不写文件。不建议给网页加写配置接口（越权/安全风险）。
 """
 
 

@@ -42,6 +42,7 @@ CONFIG = {
         ".git", ".zhanlu", "__pycache__", ".venv", "node_modules",
         "workspace",       # 数据产物：向量/聚类/metrics/cards/ledger，可重建，不读
         "research-log",    # skill 源（照搬自 /日志 skill），是模板不是树的文档
+        "vendor",          # 第三方 vendored 代码副本（dasc），非树的文档
     ],
 
     # 有意不进树的 md：相对路径 → 为什么它合法（每条都要写原因）。

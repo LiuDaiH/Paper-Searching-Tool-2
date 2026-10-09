@@ -1,0 +1,18 @@
+{
+  "key": "1aba94d9583a9ecd2428137ecf96af1b",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料中分别出现了动态稀疏训练、机器人足球和平均场博弈的研究，与陈述列举的三项研究一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料中分别出现了动态稀疏训练、机器人足球和平均场博弈的研究，与陈述列举的三项研究一致。\"}",
+  "usage": {
+    "prompt_tokens": 485,
+    "completion_tokens": 92
+  },
+  "attempts": 1,
+  "at": "2026-10-08T16:28:27+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nValue-Based Deep Multi-Agent Reinforcement Learning with Dynamic Sparse Training\nDeep Multi-agent Reinforcement Learning (MARL) relies on neural networks with numerous parameters in multi-agent scenarios, often incurring substantial computational overhead. Consequently, there is an urgent need to expedite training and enable model compression in MARL. This paper proposes the utilization of dynamic sparse training (DST), a technique proven effective in deep supervised learning \nLearning Robot Soccer from Egocentric Vision with Deep Reinforcement Learning\nWe apply multi-agent deep reinforcement learning (RL) to train end-to-end robot soccer policies with fully onboard computation and sensing via egocentric RGB vision. This setting reflects many challenges of real-world robotics, including active perception, agile full-body control, and long-horizon planning in a dynamic, partially-observable, multi-agent domain. We rely on large-scale, simulation-b\nSolving Continuous Mean Field Games: Deep Reinforcement Learning for Non-Stationary Dynamics\nMean field games (MFGs) have emerged as a powerful framework for modeling interactions in large-scale multi-agent systems. Despite recent advancements in reinforcement learning (RL) for MFGs, existing methods are typically limited to finite spaces or stationary models, hindering their applicability to real-world problems. This paper introduces a novel deep reinforcement learning (DRL) algorithm sp\n\n陈述：具体研究包括动态稀疏训练 [P:orid:Gug7wc0BSs]、机器人足球 [P:orid:fC0wWeXsVm]、平均场博弈 [P:orid:Jw5TFF3HkH] 等。"
+}

@@ -157,7 +157,7 @@ def main() -> int:
         if qh:
             hit_rates.append(len(qh & set(top)) / min(len(top), len(qh)))
     summary["rlrag_top10_hit_rate"] = _mean(hit_rates) if hit_rates else None
-    kp_feas = [r for r in rows if (r.get("meta") or {}).get("key_path", {}).get("feasible")]
+    kp_feas = [r for r in rows if ((r.get("meta") or {}).get("key_path") or {}).get("feasible")]
     summary["key_path_feasible"] = len(kp_feas)
     for t, ms in by_type.items():
         # 兼容 error 行（metrics 为空 dict）：用 .get 且跳过空 metrics，避免 KeyError

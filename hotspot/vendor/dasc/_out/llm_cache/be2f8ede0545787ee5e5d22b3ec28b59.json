@@ -1,0 +1,18 @@
+{
+  "key": "be2f8ede0545787ee5e5d22b3ec28b59",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "unsupported",
+    "reason": "材料仅涉及元强化学习（meta-RL）中的世界模型方法，未提及多智能体强化学习（multi-agent RL），陈述将方法应用于多智能体场景缺乏依据。"
+  },
+  "raw": "{\"{\"verdict\": \"unsupported\", \"reason\": \"材料仅涉及元强化学习（meta-RL）中的世界模型方法，未提及多智能体强化学习（multi-agent RL），陈述将方法应用于多智能体场景缺乏依据。\"}",
+  "usage": {
+    "prompt_tokens": 417,
+    "completion_tokens": 153
+  },
+  "attempts": 1,
+  "at": "2026-10-08T15:46:07+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\n\nMAMBA: An Effective World Model Approach for Meta-Reinforcement Learning\nMeta-reinforcement learning (meta-RL) is a promising framework for tackling challenging domains requiring efficient exploration. Existing meta-RL algorithms are characterized by low sample efficiency, and mostly focus on low-dimensional task distributions. In parallel, model-based RL methods have been successful in solving partially observable MDPs, of which meta-RL is a special case. In this work, we leverage this success and propose a new model-based approach to meta-RL, based on elements from existing state-of-the-art model-based and meta-RL methods. We demonstrate the effectiveness of our approach on common meta-RL benchmark domains, attaining greater return with better sample efficiency (up to $15\\times$) while requiring very little hyperparameter tuning. In addition, we validate our approach on a slate of more challenging, higher-dimensional domains, taking a step towards real-world generalizing agents.\n\n陈述：在样本效率方面，世界模型方法被用于解决多智能体强化学习中的低样本效率问题，相关论文如 MAMBA 提出了针对元强化学习的有效世界模型方法 [C:11][P:orid:1RE0H6mU7M]。"
+}

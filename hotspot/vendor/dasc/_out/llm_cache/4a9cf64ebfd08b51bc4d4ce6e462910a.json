@@ -1,0 +1,18 @@
+{
+  "key": "4a9cf64ebfd08b51bc4d4ce6e462910a",
+  "model": "deepseek-chat",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料明确介绍 Aeolus 大规模多模态航班延误数据集，用于支持延误预测和表格数据基础模型研究，并指出既有数据集通常仅具扁平表格结构、无法刻画延误传播的时空动态，与陈述一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料明确介绍 Aeolus 大规模多模态航班延误数据集，用于支持延误预测和表格数据基础模型研究，并指出既有数据集通常仅具扁平表格结构、无法刻画延误传播的时空动态，与陈述一致。\"}",
+  "usage": {
+    "prompt_tokens": 515,
+    "completion_tokens": 59
+  },
+  "attempts": 1,
+  "at": "2026-10-08T03:30:47+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nAeolus: A Multi-Structural Flight Delay Dataset\nWe introduce Aeolus, a large-scale Multi-modal Flight Delay Dataset designed to advance research on flight delay prediction and support the development of foundation models for tabular data. Existing datasets in this domain are typically limited to flat tabular structures and fail to capture the spatiotemporal dynamics inherent in delay propagation. Aeolus addresses this limitation by providing three aligned modalities: (i) a tabular dataset with rich operational, meteorological, and airportlevel features for over 50 million flights; (ii) a flight chain module that models delay propagation along sequential flight legs, capturing upstream and downstream dependencies; and (iii) a flight network graph that encodes shared aircraft, crew, and airport resource connections, enabling cross-flight relational reasoning. The dataset is carefully constructed with temporal splits, comprehensive features, and strict leakage prevention to support realistic and reproducible machine learning evaluation. Aeolus supports a broad range of tasks, including regression, classification, temporal structure modeling, and graph learning, serving as a unified benchmark across tabular, sequential, and graph modalities. We release baseline experiments and preprocessing tools to facilitate adoption. Aeolus fills a key gap for both domain-specific modeling and general-purpose structured data research. Our source code and data can be accessed at https://github.com/Flnny/Delay-data\n\n陈述：航班延误数据方面，有工作构建了大规模多模态航班延误数据集，用于支持延误预测与表格数据基础模型研究，弥补既有数据集仅具扁平表格结构、难以刻画延误传播时空动态的不足 [P:orid:BIlSrNHdki]。"
+}

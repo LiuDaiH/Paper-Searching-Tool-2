@@ -1,0 +1,18 @@
+{
+  "key": "9ff2a60bba9c1ae8e292acaaa77219db",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料明确说明个性化对齐方法将LLM的响应和决策与个体用户或紧密相关群体的特定偏好匹配，并指出通用对齐未能捕捉个体用户的独特特征和偏好，与陈述内容一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料明确说明个性化对齐方法将LLM的响应和决策与个体用户或紧密相关群体的特定偏好匹配，并指出通用对齐未能捕捉个体用户的独特特征和偏好，与陈述内容一致。\"}",
+  "usage": {
+    "prompt_tokens": 498,
+    "completion_tokens": 113
+  },
+  "attempts": 1,
+  "at": "2026-10-08T15:13:22+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nPersonality Alignment of Large Language Models\nAligning large language models (LLMs) typically aim to reflect general human values and behaviors, but they often fail to capture the unique characteristics and preferences of individual users. To address this gap, we introduce the concept of Personality Alignment. This approach tailors LLMs' responses and decisions to match the specific preferences of individual users or closely related groups. Inspired by psychometrics, we created the Personality Alignment with Personality Inventories (PAPI) dataset, which includes data from over 320,000 real subjects across multiple personality assessments - including both the Big Five Personality Factors and Dark Triad traits. This comprehensive dataset enables quantitative evaluation of LLMs' alignment capabilities across both positive and potentially problematic personality dimensions. Recognizing the challenges of personality alignments—such as limited personal data, diverse preferences, and scalability requirements—we developed an activation intervention optimization method. This method enhances LLMs' ability to efficiently align with individual behavioral preferences using minimal data and computational resources. Remarkably, our method, PAS, achieves superior performance while requiring only 1/5 of the optimization time compared to DPO, offering practical value for personality alignment. Our work paves the way for future AI systems to make decisions and reason in truly personality ways, enhancing the relevance and meaning of AI interactions for each user and advancing human-centered artificial intelligence. The dataset and code are released at https://github.com/zhu-minjun/PAlign.\n\n陈述：在此基础上，个性化对齐方法进一步将 LLM 的响应与个体用户或群体的偏好匹配，弥补通用对齐的不足 [P:orid:0DZEs8NpUH]。"
+}

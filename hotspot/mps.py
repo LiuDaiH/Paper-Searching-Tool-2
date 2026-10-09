@@ -130,6 +130,15 @@ def compute_key_path(pool_ids: Iterable[str], *, cfg=None, algo: str = "mag_sub"
             "covered_so_far": round(accum, 4),
         })
 
+    # 引用边（完整引用网用）：取 key 路径上两个端点都在 word 内的依赖边，
+    # 方向 prereq -> elem（先读前置，再读本篇）。只标在路径内的边，避免图过密。
+    word_set = set(r.word)
+    edges = []
+    for elem in r.word:
+        for pre in mps.poset.prereq_of.get(elem, ()):
+            if pre in word_set:
+                edges.append([pre, elem])
+
     return KeyPathResult(
         seed_count=len(seeds),
         n_elements=len(mps.elems),
@@ -142,6 +151,7 @@ def compute_key_path(pool_ids: Iterable[str], *, cfg=None, algo: str = "mag_sub"
         covered_clusters=sorted((c for c in covered if c is not None),
                                 key=str),
         steps=step_info,
+        edges=edges,
         feasible=True,
         note="",
     )
@@ -158,7 +168,7 @@ class KeyPathResult:
     def __init__(self, *, seed_count: int = 0, n_elements: int = 0,
                  n_edges: int = 0, delta: int = 0, conn: float = 0.0,
                  algo: str = "", word: list = (), value: float = 0.0,
-                 covered_clusters: list = (), steps: list = (),
+                 covered_clusters: list = (), steps: list = (), edges: list = (),
                  feasible: bool = False, note: str = ""):
         self.seed_count = seed_count
         self.n_elements = n_elements
@@ -170,6 +180,7 @@ class KeyPathResult:
         self.value = value
         self.covered_clusters = list(covered_clusters)
         self.steps = list(steps)
+        self.edges = list(edges)
         self.feasible = feasible
         self.note = note
 
@@ -179,7 +190,8 @@ class KeyPathResult:
                 "conn": float(self.conn), "algo": self.algo,
                 "word": self.word, "value": self.value,
                 "covered_clusters": self.covered_clusters,
-                "steps": self.steps, "feasible": self.feasible,
+                "steps": self.steps, "edges": self.edges,
+                "feasible": self.feasible,
                 "note": self.note}
 
 

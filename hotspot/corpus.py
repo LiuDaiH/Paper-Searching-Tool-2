@@ -82,8 +82,9 @@ def _load_source(path: Path) -> list[Paper]:
 class MergedCorpus:
     """把 24+25 两份 jsonl 并成一套语料。`paper_id` 并集（交集为 0，去重兜底）。"""
 
-    def __init__(self, sources: Iterable[str | Path] = ()):
-        if not sources:
+    def __init__(self, sources: Iterable[str | Path] = (), *, fallback: bool = True):
+        # `fallback=False` 时（arXivCorpus）不给配置兜底——避免空 sources 误回退到会议库。
+        if not sources and fallback:
             cfg = load_config()
             sources = (cfg.get("corpus") or {}).get("sources") or []
         by_id: dict[str, Paper] = {}
@@ -172,9 +173,11 @@ class arXivCorpus(MergedCorpus):
     """
 
     def __init__(self, path=None):
-        if path is None:
+        if not path:
             path = ((load_config().get("corpus") or {}).get("arxiv_source"))
-        super().__init__([path] if path else [])
+        # 用 `[path] if path else []` 当 path 为空串时给空 sources；
+        # `fallback=False` 使 MergedCorpus 绝不回退到会议库 sources（否则空参会误并成 22,747）。
+        super().__init__([path] if path else [], fallback=False)
 
     def new_this_week(self, anchor: Optional[str] = None) -> list[Paper]:
         """`first_seen` 落在 `anchor`（默认今天）所在 ISO 周的论文。

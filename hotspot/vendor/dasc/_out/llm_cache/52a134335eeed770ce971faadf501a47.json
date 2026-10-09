@@ -1,0 +1,18 @@
+{
+  "key": "52a134335eeed770ce971faadf501a47",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料明确提出了OE-CLBF控制器，即基于在线探索的控制李雅普诺夫障碍函数，与陈述一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料明确提出了OE-CLBF控制器，即基于在线探索的控制李雅普诺夫障碍函数，与陈述一致。\"}",
+  "usage": {
+    "prompt_tokens": 433,
+    "completion_tokens": 86
+  },
+  "attempts": 1,
+  "at": "2026-10-08T12:48:20+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nProvably Safe Online Multi-Agent Navigation in Unknown Environments\nControl Barrier Functions (CBFs) provide safety guarantees for multi-agent navigation. However, traditional approaches require full knowledge of the environment (e.g., obstacle positions and shapes) to formulate CBFs and hence, are not applicable in unknown environments. This paper overcomes this issue by proposing an Online Exploration-based Control Lyapunov Barrier Function (OE-CLBF) controller. It estimates the unknown environment by learning its corresponding CBF with a Support Vector Machine (SVM) in an online manner, using local neighborhood information, and leverages the latter to generate actions for safe navigation. To reduce the computation incurred by the online SVM training, we use an Imitation Learning (IL) framework to predict the importance of neighboring agents with Graph Attention Networks (GATs), and train the SVM only with information received from neighbors of high ‘value’. The OE-CLBF allows for decentralized deployment, and importantly, provides provable safety guarantees that we derive in this paper. Experiments corroborate theoretical findings and demonstrate superior performance w.r.t. state-of-the-art baselines in a variety of unknown environments.\n\n陈述：多智能体导航中提出基于在线探索的控制李雅普诺夫障碍函数 [P:orid:0M7JiV1GFN]。"
+}

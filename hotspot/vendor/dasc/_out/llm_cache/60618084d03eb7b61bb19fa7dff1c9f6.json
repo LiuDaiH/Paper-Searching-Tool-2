@@ -1,0 +1,17 @@
+{
+  "key": "60618084d03eb7b61bb19fa7dff1c9f6",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "query": "multi-agent reinforcement learning research trends"
+  },
+  "raw": "{\"query\": \"multi-agent reinforcement learning research trends\"}",
+  "usage": {
+    "prompt_tokens": 92,
+    "completion_tokens": 20
+  },
+  "attempts": 1,
+  "at": "2026-10-08T15:25:15+00:00",
+  "system": "把下面的用户问题改写成一段适合论文库检索的英文关键词/短语查询，保留检索信息、去掉口语与语气词。只输出 JSON：{\"query\": \"...\"}。若本来就是英文技术词，照原样输出。",
+  "user": "multi-agent reinforcement learning research trends"
+}

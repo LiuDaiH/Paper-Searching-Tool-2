@@ -78,15 +78,20 @@ def judge_claim(claim: Claim, evidence: str, client, *, cfg=None) -> tuple[str, 
 
 def verify_claims(claims: list[Claim], *, allowed_ids: frozenset[str],
                   evidence_lookup: dict[str, str],
-                  client=None, cfg=None) -> list[Verdict]:
-    """逐条判定。`evidence_lookup`：id -> 该论文/该簇的摘要/卡片文本。"""
+                  client=None, cfg=None, progress=None) -> list[Verdict]:
+    """逐条判定。`progress(name, cur, total)` 每 claim 报真实进度（可量化进度条用）。"""
     out: list[Verdict] = []
-    for c in claims:
+    total = len(claims)
+    for i, c in enumerate(claims):
+        if progress:
+            progress("校验引用", i, total)          # 真实 i/total
         status, detail = classify(c, allowed_ids=allowed_ids)
         if status == "unsupported":
             ev = "\n".join(evidence_lookup.get(i, "") for i in c.cited_ids)
             status, detail = judge_claim(c, ev, client, cfg=cfg)
         out.append(Verdict(claim=c, status=status, detail=detail))
+    if progress:
+        progress("校验引用", total, total)
     return out
 
 

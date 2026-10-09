@@ -1,0 +1,18 @@
+{
+  "key": "3cb306b2d4311e7a00b6eabc2e66cb87",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料中四篇论文标题与陈述列举的论文一一对应，内容均与飞机或无人机相关，陈述合理得出。"
+  },
+  "raw": "{\"{\"verdict\": \"supported\", \"reason\": \"材料中四篇论文标题与陈述列举的论文一一对应，内容均与飞机或无人机相关，陈述合理得出。\"}",
+  "usage": {
+    "prompt_tokens": 602,
+    "completion_tokens": 120
+  },
+  "attempts": 1,
+  "at": "2026-10-08T08:22:25+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nNeuralPlane: An Efficiently Parallelizable Platform for Fixed-Wing Aircraft Control with Reinforcement Learning\nReinforcement learning (RL) demonstrates superior potential over traditional flight control methods for fixed-wing aircraft, particularly under extreme operational conditions. However, the high demand for training samples and the lack of efficient computation in existing simulators hinder its further application. In this paper, we introduce NeuralPlane, the first benchmark platform for large-scale\nGaussian Splatting to Real World Flight Navigation Transfer with Liquid Networks\nSimulators are powerful tools for autonomous robot learning as they offer scalable data generation, flexible design, and optimization of trajectories. However, transferring behavior learned from simulation data into the real world proves to be difficult, usually mitigated with compute-heavy domain randomization methods or further model fine-tuning. We present a method to improve generalization and\nAeolus: A Multi-Structural Flight Delay Dataset\nWe introduce Aeolus, a large-scale Multi-modal Flight Delay Dataset designed to advance research on flight delay prediction and support the development of foundation models for tabular data. Existing datasets in this domain are typically limited to flat tabular structures and fail to capture the spatiotemporal dynamics inherent in delay propagation. Aeolus addresses this limitation by providing th\nDrones Help Drones: A Collaborative Framework for Multi-Drone Object Trajectory Prediction and Beyond\nCollaborative trajectory prediction can comprehensively forecast the future motion of objects through multi-view complementary information. However, it encounters two main challenges in multi-drone collaboration settings. The expansive aerial observations make it difficult to generate precise Bird's Eye View (BEV) representations. Besides, excessive interactions can not meet real-time prediction r\n\n陈述：本库中与飞机直接相关的论文包括：固定翼飞机控制强化学习平台 NeuralPlane [P:orid:LXgbgMOygH]；从仿真到真实世界的飞行导航迁移方法 [P:orid:ubq7Co6Cbv]；多模态航班延误数据集 Aeolus [P:orid:BIlSrNHdki]；以及多无人机协作轨迹预测框架 [P:orid:20QgErW5zH]。"
+}

@@ -47,16 +47,17 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 
-# ── 接线：把 obsidian 库根放上 sys.path，好让 `import dasc` 找得到 ────────
-# `工具/` 一并放上：`md2vectors.py` 是库根散件，`dasc/cluster/embed.py`
-# 也是这么引它的（同一套路，见 `obsidian/CLAUDE.md` 的文件夹表）。
+# ── 接线：把 vendor 的 dasc（自包含副本）放 sys.path 最前，让 `import dasc`
+# 打到本仓库 `hotspot/vendor/dasc/` 而不是外部 obsidian/dasc。工具/ 一并放上
+# （md2vectors.py 是库根散件，dasc/cluster/embed.py 也是这么引的）。
 # 只有一套环境，不做可配置抽象（方案 §不做清单）。
+_VENDOR = Path(__file__).resolve().parent / "vendor"
 _OBSIDIAN = Path(r"D:\大学编程学习\obsidian")
 
-for _p in (_OBSIDIAN, _OBSIDIAN / "工具"):
+for _p in (_OBSIDIAN / "工具", _OBSIDIAN, _VENDOR):   # 后插的 vendor 在最前 → 优先命中自包含 dasc
     if _p.is_dir() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
-del _p
+del _p, _VENDOR
 
 
 # ── 本项目的落点 ────────────────────────────────────────────────────────
@@ -66,8 +67,8 @@ HOTSPOT_ROOT: Path = Path(__file__).resolve().parents[1]
 #: 产物目录。可全量重建，不入库。
 WORKSPACE: Path = HOTSPOT_ROOT / "workspace"
 
-#: dasc 复用源（只接线，不复制）
-DASC_ROOT: Path = _OBSIDIAN / "dasc"
+#: dasc 自包含副本（vendor 化，`import dasc` 指向这里）
+DASC_ROOT: Path = Path(__file__).resolve().parent / "vendor" / "dasc"
 
 #: 导师论文库（只读）。访问一律走 `dasc.readonly.LibraryView`。
 LIBRARY_ROOT: Path = _OBSIDIAN / "rl_acdemical_paper"

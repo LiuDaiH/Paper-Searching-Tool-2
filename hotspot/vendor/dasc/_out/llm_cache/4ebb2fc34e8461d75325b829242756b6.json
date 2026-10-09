@@ -1,0 +1,17 @@
+{
+  "key": "4ebb2fc34e8461d75325b829242756b6",
+  "model": "deepseek-chat",
+  "ok": true,
+  "data": {
+    "ans": "OK"
+  },
+  "raw": "{\"ans\": \"OK\"}",
+  "usage": {
+    "prompt_tokens": 47,
+    "completion_tokens": 6
+  },
+  "attempts": 1,
+  "at": "2026-10-08T07:27:48+00:00",
+  "system": "只回复 OK 两个字符",
+  "user": "ping"
+}

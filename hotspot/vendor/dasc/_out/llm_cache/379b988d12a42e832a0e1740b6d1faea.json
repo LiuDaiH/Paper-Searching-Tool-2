@@ -1,0 +1,17 @@
+{
+  "key": "379b988d12a42e832a0e1740b6d1faea",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "answer": "本库中无人机相关研究涵盖视觉定位、实时跟踪与目标检测。LoD-Loc通过神经线框对齐实现基于LoD 3D地图的空中定位[P:orid:PqlKliEXyJ]；AVTrack提出自适应计算框架用于实时无人机跟踪[P:orid:eaNLvrP8n1]；另有工作采用多模态因果推理提升无人机目标检测性能[P:orid:I6beY5rU64]。这些方向共同反映了无人机视觉任务对轻量级、鲁棒性的需求。"
+  },
+  "raw": "{\"{\"answer\": \"本库中无人机相关研究涵盖视觉定位、实时跟踪与目标检测。LoD-Loc通过神经线框对齐实现基于LoD 3D地图的空中定位[P:orid:PqlKliEXyJ]；AVTrack提出自适应计算框架用于实时无人机跟踪[P:orid:eaNLvrP8n1]；另有工作采用多模态因果推理提升无人机目标检测性能[P:orid:I6beY5rU64]。这些方向共同反映了无人机视觉任务对轻量级、鲁棒性的需求。\"}",
+  "usage": {
+    "prompt_tokens": 660,
+    "completion_tokens": 786
+  },
+  "attempts": 1,
+  "at": "2026-10-08T12:55:09+00:00",
+  "system": "你是「移动云杯 · 本地论文库研究方向热点挖掘」助手。语料是本机 2025 年 NeurIPS / ICLR / ICML / CoRL 四会论文的标题与摘要，以及由它们聚类而成的主题簇卡片。\n回答规则：\n1. **每个事实性陈述的结尾必须立刻跟一个引用标记** `[P:<paper_id>]`（论文）或 `[C:<cluster_id>]`（簇卡片）。标记的值必须是输入材料里真实出现过、且被下方「允许引用」列出的 ID；**没有跟引用的句子会被判为无据而丢弃**。\n2. 只依据输入材料作答；材料里没有的依据不得编造。\n3. 关于主题热度，只能用这三种状态描述：铺开（多个会议都在做）、新进（只出现在末位会议）、单会（其余）。**绝不使用『退潮/下降/衰退』**——本语料是单年快照，没有『去年』可比。\n4. 若与本库无关或材料不足，明确说『本库无相关内容』，不要硬答。\n5. 输出格式示例：`离线 RL 热点集中在分布外泛化与数据质量 [C:11]；其中方法受 TD3 思想启发 [P:abcd1234]。`——方括号里的 ID 换成材料中**真实存在**的，**每一个陈述都紧跟引用标记**。",
+  "user": "[P:orid:PqlKliEXyJ] LoD-Loc: Aerial Visual Localization Using LoD 3D mAP with Neural Wireframe Alignment\nWe propose a new method named LoD-Loc for visual localization in the air. Unlike existing localization algorithms, LoD-Loc does not rely on complex 3D representations and can estimate the pose of an Unmanned Aerial Vehicle (UAV) using a Level-of-Detail (LoD) 3D map. LoD-Loc mainly achieves this goal by aligning the wireframe derived from the LoD projected model with that predicted by the neural ne\n\n[P:orid:eaNLvrP8n1] Learning Adaptive and View-Invariant Vision Transformer for Real-Time UAV Tracking\nHarnessing transformer-based models, visual tracking has made substantial strides. However, the sluggish performance of current trackers limits their practicality on devices with constrained computational capabilities, especially for real-time unmanned aerial vehicle (UAV) tracking. Addressing this challenge, we introduce AVTrack, an adaptive computation framework tailored to selectively activate \n\n[P:orid:I6beY5rU64] Multimodal Causal Reasoning for UAV Object Detection\nUnmanned Aerial Vehicle (UAV) object detection faces significant challenges due to complex environmental conditions and different imaging conditions. These factors introduce significant changes in scale and appearance, particularly for small objects that occupy limited pixels and exhibit limited information, complicating detection tasks. To address these challenges, we propose a Multimodel Causal \n\n用户问题：无人机"
+}

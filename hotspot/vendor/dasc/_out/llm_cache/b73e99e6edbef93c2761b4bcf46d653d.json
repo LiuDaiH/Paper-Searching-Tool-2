@@ -1,0 +1,18 @@
+{
+  "key": "b73e99e6edbef93c2761b4bcf46d653d",
+  "model": "deepseek-chat",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料中[C:0]描述了偏好对齐与奖励学习这一大簇，涵盖偏好优化等方法，DPO作为偏好优化领域的核心方法，可合理推断属于该簇的核心方法之一。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料中[C:0]描述了偏好对齐与奖励学习这一大簇，涵盖偏好优化等方法，DPO作为偏好优化领域的核心方法，可合理推断属于该簇的核心方法之一。\"}",
+  "usage": {
+    "prompt_tokens": 331,
+    "completion_tokens": 52
+  },
+  "attempts": 1,
+  "at": "2026-10-08T06:16:24+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\n[C:0] · 偏好对齐与奖励学习：围绕大模型与机器人操作，通过自奖励、偏好优化、指令回译及安全对齐等方法实现鲁棒且安全的偏好对齐与奖励学习。（548篇）\n   跨会 {'ICML': 140, 'NeurIPS': 232, 'ICLR': 173, 'CoRL': 3}；分年 {2024: 212, 2025: 336}；代表 [P:orid:dTPz4rEDok]\n\n陈述：DPO（Direct Preference Optimization）在本库中属于偏好对齐与奖励学习这一大簇的核心方法之一 [C:0]。"
+}

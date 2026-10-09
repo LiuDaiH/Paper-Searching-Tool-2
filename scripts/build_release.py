@@ -33,8 +33,8 @@ SNAP = "智引热点"
 
 
 def _clean(path: Path) -> None:
-    if path.exists():
-        shutil.rmtree(path)
+    # 允许删除失败（目录可能被占用/是某进程的 CWD），靠 dirs_exist_ok 覆盖填充
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def _iter_project_files(root: Path):
@@ -85,7 +85,11 @@ embed:
 
 llm:
   api_key_env: Mobile_trash_API_KEY   # 你自己的 key 变量名（运行态设置，永不落盘）
-  model_flash: deepseek-chat
+  # 主问答端点与评测一致——你的 key 是移动云 MaaS 的，打官方 api.deepseek.com 会 401。
+  base_url: https://zhenze-huhehaote.cmecloud.cn/v1
+  model_flash: deepseek-v4-flash-0731
+  model_pro: deepseek-v4-flash-0731
+  timeout: 600
 
 llm_eval:
   base_url: https://zhenze-huhehaote.cmecloud.cn/v1
@@ -142,7 +146,8 @@ def build() -> None:
         shutil.copytree(ROOT / d, snap / d,
                         ignore=shutil.ignore_patterns(
                             *[p + "*" for p in EXCLUDE_PARTS],
-                            *["*" + s for s in EXCLUDE_SUFFIX]))
+                            *["*" + s for s in EXCLUDE_SUFFIX]),
+                        dirs_exist_ok=True)
     _snapshot_workspace(ROOT / "workspace" / "sample", snap / "workspace")
     (snap / "config.yaml").write_text(_sample_config_text(), encoding="utf-8")
     (snap / "requirements.txt").write_text(
@@ -157,8 +162,10 @@ def build() -> None:
     shutil.copytree(ROOT / "hotspot" / "ui", front / "hotspot" / "ui",
                     ignore=shutil.ignore_patterns(
                         *[p + "*" for p in EXCLUDE_PARTS],
-                        *["*" + s for s in EXCLUDE_SUFFIX]))
-    (front / "hotspot" / "ui").mkdir(parents=True, exist_ok=True)  # noqa: 已建
+                        *["*" + s for s in EXCLUDE_SUFFIX]),
+                    dirs_exist_ok=True)
+    (front / "hotspot" / "ui").mkdir(parents=True, exist_ok=True)
+    (front / "scripts").mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "scripts" / "run_ui.py", front / "scripts" / "run_ui.py")
     (front / "README-前端源码.md").write_text(FRONT_README, encoding="utf-8")
 
@@ -194,6 +201,13 @@ def _root_readme() -> str:
 arXiv 周报走 `scripts/update_arxiv_weekly.py` 增量。
 
 > 注意：样例数据的检索/聚类是**子集演示效果**；完整结论请在原始语料上运行服务端源码。
+
+## 常见问题：网页为什么不能改配置？
+- 本应用是**单体**：`config.yaml` 只在服务端进程启动时读一次（`load_config()`），网页（浏览器）
+  只是 UI，JS 出于安全无法写服务器磁盘，所以**不能从网页改 `config.yaml`**。
+- 要改配置：① 编辑服务器上 `config.yaml` 后重启 `streamlit`；② 或在前端「运行态设置」
+  （如 API key）里改——那只改内存、不写文件。
+- 不建议给网页加"写 config"接口（越权/安全风险）。
 """
 
 

@@ -1,0 +1,18 @@
+{
+  "key": "6ebc49c129a346cf0980f782c8a25728",
+  "model": "deepseek-flash",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料标题与摘要明确涉及航拍图像稀疏标注目标检测（SAOD in aerial images），并提到现有 SAOD 方法，说明该方向存在专门方法。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料标题与摘要明确涉及航拍图像稀疏标注目标检测（SAOD in aerial images），并提到现有 SAOD 方法，说明该方向存在专门方法。\"}",
+  "usage": {
+    "prompt_tokens": 335,
+    "completion_tokens": 255
+  },
+  "attempts": 1,
+  "at": "2026-10-09T02:38:05+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nProgressive Exploration-Conformal Learning for Sparsely Annotated Object Detection in Aerial Images\nThe ability to detect aerial objects with limited annotation is pivotal to the development of real-world aerial intelligence systems. In this work, we focus on a demanding but practical sparsely annotated object detection (SAOD) in aerial images, which encompasses a wider variety of aerial scenes with the same number of annotated objects. Although most existing SAOD methods rely on fixed threshold\n\n陈述：航拍图像稀疏标注目标检测也有专门方法 [P:orid:Jzog9gvOf6]。"
+}

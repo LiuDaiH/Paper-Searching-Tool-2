@@ -1,0 +1,18 @@
+{
+  "key": "5ba81c5a3f37249e905670ae1752672a",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料1明确说明NEFTune对RLHF模型（如LLaMA-2-Chat）有改进，支持'噪声嵌入增强指令微调也间接影响RLHF基础模型'；材料2提出PIT框架提升模型响应质量，支持'自改进学习则提升模型响应质量'。"
+  },
+  "raw": "{\"{\"verdict\": \"supported\", \"reason\": \"材料1明确说明NEFTune对RLHF模型（如LLaMA-2-Chat）有改进，支持'噪声嵌入增强指令微调也间接影响RLHF基础模型'；材料2提出PIT框架提升模型响应质量，支持'自改进学习则提升模型响应质量'。\"}",
+  "usage": {
+    "prompt_tokens": 751,
+    "completion_tokens": 153
+  },
+  "attempts": 1,
+  "at": "2026-10-08T11:18:54+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nNEFTune: Noisy Embeddings Improve Instruction Finetuning\nWe show that language model finetuning can be improved, sometimes dramatically, with a simple augmentation. NEFTune adds noise to the embedding vectors during training. Standard finetuning of LLaMA-2-7B using Alpaca achieves $29.79$\\% on AlpacaEval, which rises to $64.69$\\% using noisy embeddings. NEFTune also improves over strong baselines on modern instruction datasets. Models trained with Evol-Instruct see a $10$\\% improvement, with ShareGPT an $8$\\% improvement, and with OpenPlatypus an $8$\\% improvement. Even powerful models further refined with RLHF such as LLaMA-2-Chat benefit from additional training with NEFTune. Particularly, we see these improvements on the conversational abilities of the instruction model and not on traditional tasks like those on the OpenLLM Leaderboard, where performance is the same.\nEnabling Lanuguage Models to Implicitly Learn Self-Improvement\nLarge Language Models (LLMs) have demonstrated remarkable capabilities in open-ended text generation tasks. However, the inherent open-ended nature of these tasks implies that there is always room for improvement in the quality of model responses. To address this challenge, various approaches have been proposed to enhance the performance of LLMs. There has been a growing focus on enabling LLMs to self-improve their response quality, thereby reducing the reliance on extensive human annotation efforts for collecting diverse and high-quality training data. Recently, prompting-based methods have been widely explored among self-improvement methods owing to their effectiveness, efficiency, and convenience. However, those methods usually require explicitly and thoroughly written rubrics as inputs to LLMs. It is expensive and challenging to manually derive and provide all necessary rubrics with a real-world complex goal for improvement (e.g., being more helpfulness and less harmful). To this end, we propose an imPlicit self-ImprovemenT (PIT) framework that implicitly learns the improvement goal from human preference data. PIT only requires preference data that are used to train reward models with no extra human efforts. Specifically, we reformulate the training objective of reinforcement learning from human feedback (RLHF) -- instead of maximizing response quality for a given input, we maximize the quality gap of the response conditioned on a reference response. In this way, PIT is implicitly trained with the improvement goal of better aligning with human preferences. Experiments on two real-world datasets and one synthetic dataset show that our method significantly outperforms prompting-based methods.\n\n陈述：此外，噪声嵌入增强指令微调也间接影响 RLHF 基础模型 [P:orid:0bMmZ3fkCk]，自改进学习则提升模型响应质量 [P:orid:2tVHNRZuCs]。"
+}

@@ -1,0 +1,18 @@
+{
+  "key": "5075ba316d7e30a861f77026295f00bd",
+  "model": "deepseek-flash",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料标题即 CaPo: Cooperative Plan Optimization for Efficient Embodied Multi-Agent Cooperation，且摘要指出其针对 LLM 具身多智能体合作中此前方法缺乏长期战略与协作规划的问题，并提出合作计划优化，与陈述一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料标题即 CaPo: Cooperative Plan Optimization for Efficient Embodied Multi-Agent Cooperation，且摘要指出其针对 LLM 具身多智能体合作中此前方法缺乏长期战略与协作规划的问题，并提出合作计划优化，与陈述一致。\"}",
+  "usage": {
+    "prompt_tokens": 347,
+    "completion_tokens": 255
+  },
+  "attempts": 1,
+  "at": "2026-10-09T02:32:56+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nCaPo: Cooperative Plan Optimization for Efficient Embodied Multi-Agent Cooperation\nIn this work, we address the cooperation problem among large language model (LLM) based embodied agents, where agents must cooperate to achieve a common goal. Previous methods often execute actions extemporaneously and incoherently, without long-term strategic and cooperative planning, leading to redundant steps, failures, and even serious repercussions in complex tasks like search-and-rescue miss\n\n陈述：代表工作 CaPo 针对 LLM 具身多智能体合作中缺乏长期战略与协作规划的问题提出合作计划优化 [P:orid:KRv9NubipP]。"
+}

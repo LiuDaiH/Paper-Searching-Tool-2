@@ -1,0 +1,18 @@
+{
+  "key": "15f9d6b153836bf1918038ca8c956726",
+  "model": "deepseek-flash",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料 [C:5] 明确记载该簇有 13 篇，跨 NeurIPS、ICLR、CoRL、ICML 四个会议，并描述其关注 LLM 智能体与环境交互学习世界模型以支撑规划、手册构建与移动行为生成等任务，陈述与材料一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料 [C:5] 明确记载该簇有 13 篇，跨 NeurIPS、ICLR、CoRL、ICML 四个会议，并描述其关注 LLM 智能体与环境交互学习世界模型以支撑规划、手册构建与移动行为生成等任务，陈述与材料一致。\"}",
+  "usage": {
+    "prompt_tokens": 500,
+    "completion_tokens": 147
+  },
+  "attempts": 1,
+  "at": "2026-10-09T02:32:58+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\n[C:5] · LLM智能体与世界模型：围绕LLM智能体通过与环境交互学习世界模型，以支撑规划、手册构建与移动行为生成等任务。（13篇）\n   跨会 {'NeurIPS': 8, 'ICLR': 3, 'CoRL': 1, 'ICML': 1}；分年 {2024: 5, 2025: 8}；代表 [P:orid:Pwl9n4zlf5]\n[C:5] · LLM智能体与世界模型：围绕LLM智能体通过与环境交互学习世界模型，以支撑规划、手册构建与移动行为生成等任务。（13篇）\n   跨会 {'NeurIPS': 8, 'ICLR': 3, 'CoRL': 1, 'ICML': 1}；分年 {2024: 5, 2025: 8}；代表 [P:orid:Pwl9n4zlf5]\n\n陈述：「LLM 智能体与世界模型」是另一铺开簇，有 13 篇，跨 NeurIPS、ICLR、CoRL、ICML 四个会议 [C:5]；该簇关注 LLM 智能体与环境交互学习世界模型，以支撑规划、手册构建与移动行为生成等任务 [C:5]。"
+}

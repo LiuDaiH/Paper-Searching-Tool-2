@@ -1,0 +1,17 @@
+{
+  "key": "85a9045df57dcd3637b319e848d54e2d",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "route": "global"
+  },
+  "raw": "{\"route\": \"global\"}",
+  "usage": {
+    "prompt_tokens": 98,
+    "completion_tokens": 42
+  },
+  "attempts": 1,
+  "at": "2026-10-08T15:45:12+00:00",
+  "system": "你是问题路由。判断用户问题是想问『当前哪些研究方向最火/最受关注』（回复 global），还是想问某个具体方法/具体细节（回复 local）。只输出 JSON：{\"route\": \"global\" | \"local\"}。",
+  "user": "2025 年多智能体强化学习研究现状"
+}

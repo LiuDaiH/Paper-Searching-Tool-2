@@ -1,0 +1,18 @@
+{
+  "key": "e2926b320eb822e73238a7ddbda05214",
+  "model": "deepseek-chat",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料中四篇论文分别对应陈述提到的四个方向：推理时对齐的直接偏好头（Would I Lie to You? Inference Time Alignment of Language Models Using Direct Preference Heads）、离线强化学习中的偏好诱导（Preference Elicitation for Offline Reinforcement Learning）、自奖励语言模型（Self-Rewarding Language Models）以及机器人操作中的零样本跨任务偏好对齐与奖励学习（PEARL: Zero-shot Cross-task Preference Alignment and Robust Reward Learning for Robotic Manipulation），陈述与材料一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料中四篇论文分别对应陈述提到的四个方向：推理时对齐的直接偏好头（Would I Lie to You? Inference Time Alignment of Language Models Using Direct Preference Heads）、离线强化学习中的偏好诱导（Preference Elicitation for Offline Reinforcement Learning）、自奖励语言模型（Self-Rewarding Language Models）以及机器人操作中的零样本跨任务偏好对齐与奖励学习（PEARL: Zero-shot Cross-task Preference Alignment and Robust Reward Learning for Robotic Manipulation），陈述与材料一致。\"}",
+  "usage": {
+    "prompt_tokens": 623,
+    "completion_tokens": 117
+  },
+  "attempts": 1,
+  "at": "2026-10-08T06:16:27+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nWould I Lie to You? Inference Time Alignment of Language Models Using Direct Preference Heads\nPre-trained Language Models (LMs) exhibit strong zero-shot and in-context learning capabilities; however, their behaviors are often difficult to control. By utilizing Reinforcement Learning from Human Feedback (RLHF), it is possible to fine-tune unsupervised LMs to follow instructions and produce outputs that reflect human preferences. Despite its benefits, RLHF has been shown to potentially harm \nPreference Elicitation for Offline Reinforcement Learning\nApplying reinforcement learning (RL) to real-world problems is often made challenging by the inability to interact with the environment and the difficulty of designing reward functions. Offline RL addresses the first challenge by considering access to an offline dataset of environment interactions labeled by the reward function. In contrast, Preference-based RL does not assume access to the reward\nSelf-Rewarding Language Models\nWe posit that to achieve superhuman agents, future models require superhuman feedback in order to provide an adequate training signal. Current approaches commonly train reward models from human preferences, which may then be bottlenecked by human performance level, and secondly these reward models require additional human preferences data to further improve.In this work, we study Self-Rewarding La\nPEARL: Zero-shot Cross-task Preference Alignment and Robust Reward Learning for Robotic Manipulation\nIn preference-based Reinforcement Learning (RL), obtaining a large number of preference labels are both time-consuming and costly. Furthermore, the queried human preferences cannot be utilized for the new tasks. In this paper, we propose Zero-shot Cross-task Preference Alignment and Robust Reward Learning (PEARL), which learns policies from cross-task preference transfer without any human labels o\n\n陈述：此外，偏好对齐方向还延伸到推理时对齐的直接偏好头 [P:orid:NKGuLthW80]、离线强化学习中的偏好诱导 [P:orid:2pJpFtdVNe]、自奖励语言模型 [P:orid:0NphYCmgua] 以及机器人操作中的零样本跨任务偏好对齐与奖励学习 [P:orid:0urN0PnNDj]。"
+}

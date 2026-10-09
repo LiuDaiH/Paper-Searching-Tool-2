@@ -1,0 +1,17 @@
+{
+  "key": "d32b3cb781de1214b3acb9fd128f454c",
+  "model": "deepseek-chat",
+  "ok": true,
+  "data": {
+    "query": "aircraft"
+  },
+  "raw": "{\"query\": \"aircraft\"}",
+  "usage": {
+    "prompt_tokens": 110,
+    "completion_tokens": 7
+  },
+  "attempts": 1,
+  "at": "2026-10-08T06:04:21+00:00",
+  "system": "把下面的用户问题改写成一段适合论文库检索的英文关键词/短语查询，保留检索信息、去掉口语与语气词。只输出 JSON：{\"query\": \"...\"}。若本来就是英文技术词，照原样输出。",
+  "user": "飞机"
+}
