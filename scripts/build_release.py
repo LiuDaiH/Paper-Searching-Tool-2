@@ -105,10 +105,27 @@ SNAP_README = """# 智引热点 · 样例应用（独立快照）
 
 - 独立运行：源码 + 精简 workspace 已就位，**不依赖 G 盘 / 原始几十 GB 语料**；
   基于 1200 篇会议 + 600 篇 arXiv 子集的样例数据。
-- 启动：`pip install -r requirements.txt`；`streamlit run run_ui.py --server.port 8502`。
 - 数据源左侧切换「会议 24+25 / arXiv 周报」。
-- 切换 arXiv 源如需正确的 BM25，请对 workspace/sample_arxiv.jsonl 重建 bm25 缓存。
-  （样例是**子集演示效果**；完整结论请在原始语料上跑服务端源码。）
+
+## 快速开始（三步）
+1. 装依赖：`pip install -r requirements.txt`（含 `sentence-transformers`，会自动带 torch）
+2. **下载嵌入模型 bge-m3（先联网下载一次，之后离线）**：
+   ```bash
+   pip install huggingface_hub
+   huggingface-cli download BAAI/bge-m3 --local-dir D:\\hf_cache\\hub\\models--BAAI--bge-m3
+   ```
+   项目经 **`hotspot/vendor/md2vectors.py`（已随包 vendor）** 加载：`_resolve_local_model` 把模型名解析成
+   **本地 snapshot 绝对路径**（默认 `HF_HOME=D:\\hf_cache`）再 `SentenceTransformer(路径)` **离线加载、不联网**。
+   权重别放 C 盘（C 盘满会 Python 段错误，见 `md2vectors.py`）。就位校验：
+   `python -c "import md2vectors; print(md2vectors._resolve_local_model('BAAI/bge-m3'))"`
+   → 应打印**本地 snapshot 路径**（而非模型名）。
+3. 启动：`streamlit run run_ui.py --server.port 8502`，浏览器打开 http://127.0.0.1:8502。
+
+> ⚠️ **bge-m3 是运行必备**：意图聚类 / 语义向量检索 / Streit-Garg 路线图都依赖在线 embedding，
+> 缺它会退回纯词级 BM25、这些功能残缺（不报错但效果打折）。样例虽自带**预计算好的子集向量**
+> （workspace/vectors/*.npz），但 query 向量化仍要模型现场加载。
+> 切换 arXiv 源如需正确的 BM25，请对 workspace/sample_arxiv.jsonl 重建 bm25 缓存。
+> （样例是**子集演示效果**；完整结论请在原始语料上跑服务端源码。）
 """
 
 FRONT_README = """# 前端源码（Streamlit UI 层）
@@ -178,10 +195,13 @@ def _root_readme() -> str:
     return """# 移动云杯 · 热点挖掘 —— 交付包（G:\\work!）
 
 ## 目录（本目录下均为**文件夹**，未压缩）
-- **服务端源码/** —— 完整引擎源码（hotspot/ + scripts/）+ 通用 config + requirements + 运行说明。
+- **服务端源码/** —— 完整引擎源码（hotspot/ + scripts/，**已含 vendor 化的 dasc 与 md2vectors.py**）
+  + 通用 config + requirements + 运行说明。
 - **样例数据集/** —— 「智引热点」独立快照：源码副本 + 1200 篇会议 + 600 篇 arXiv 子集的
   精简 workspace（语料/向量/BM25），即用、不依赖 G 盘，可跑通检索/聚类做演示。
 - **前端源码/** —— Streamlit UI 层（hotspot/ui/ + scripts/run_ui.py）+ 说明。
+- **周报爬取/** —— arXiv 周报爬虫代码副本（抓 RSS→去重入库→取许可→RL 打标），
+  来自 `D:\\大学编程学习\\arXiv周报\\程序`；运行细节见其 `运行说明-打包说明.md`。
 - **README.md** —— 本文件。
 
 ## 客户端
@@ -190,24 +210,45 @@ def _root_readme() -> str:
   `streamlit run run_ui.py --server.port 8502`（样例快照）。
 - 别人远程使用：给 8502 做内网穿透（frp/ngrok），浏览器访问公网地址即可，零安装。
 
-## 快速开始（样例）
-1. 进入 样例数据集/智引热点/；
-2. `pip install -r requirements.txt`；
-3. `streamlit run run_ui.py --server.port 8502`；
-4. 浏览器打开 http://127.0.0.1:8502，左侧切换「会议 24+25 / arXiv 周报」搜索。
+## 快速开始（样例）——只用「样例数据集」即可完整演示
+1. 进入 样例数据集/智引热点/，`pip install -r requirements.txt`；
+2. **下载嵌入模型 bge-m3（运行必备）**：
+   ```bash
+   pip install huggingface_hub
+   huggingface-cli download BAAI/bge-m3 --local-dir D:\hf_cache\hub\models--BAAI--bge-m3
+   ```
+   （详见下方「bge-m3 嵌入模型」；意图聚类/语义检索/SG 图都依赖它。）
+3. `streamlit run run_ui.py --server.port 8502`，浏览器打开 http://127.0.0.1:8502，
+   左侧切换「会议 24+25 / arXiv 周报」搜索。
 
 ## 用完整数据（服务端）
-进入 服务端源码/，按 运行说明.md 把 G 盘语料、模型缓存、dasc 库、API key 就位后运行；
+进入 服务端源码/，按 运行说明.md 把 G 盘语料、模型缓存、API key 就位后运行；
 arXiv 周报走 `scripts/update_arxiv_weekly.py` 增量。
 
 > 注意：样例数据的检索/聚类是**子集演示效果**；完整结论请在原始语料上运行服务端源码。
 
-## 常见问题：网页为什么不能改配置？
-- 本应用是**单体**：`config.yaml` 只在服务端进程启动时读一次（`load_config()`），网页（浏览器）
-  只是 UI，JS 出于安全无法写服务器磁盘，所以**不能从网页改 `config.yaml`**。
-- 要改配置：① 编辑服务器上 `config.yaml` 后重启 `streamlit`；② 或在前端「运行态设置」
-  （如 API key）里改——那只改内存、不写文件。
-- 不建议给网页加"写 config"接口（越权/安全风险）。
+## bge-m3 嵌入模型：从哪来、怎么接
+- **不在交付包内**。bge-m3（`BAAI/bge-m3`）是 HuggingFace 开源模型，需**联网下载一次**（约 2.3GB fp32）。
+- 之后**加载是离线的**：`hotspot/vendor/md2vectors.py`（已随包 vendor）用 `_resolve_local_model` 把模型名
+  解析成**本地 snapshot 绝对路径**（`$HF_HOME/hub/models--BAAI--bge-m3/snapshots/<commit>/`）再
+  `SentenceTransformer(路径)` 加载，**不联网**；`HF_HOME` 未设时默认 `D:\hf_cache`，命中即用、零配置。
+- 默认方式（下载一次到 D 盘默认位置）：
+  ```bash
+  pip install huggingface_hub sentence-transformers
+  huggingface-cli download BAAI/bge-m3 --local-dir D:\\hf_cache\\hub\\models--BAAI--bge-m3
+  ```
+- 需要 `torch` + `sentence-transformers`；权重别放 C 盘（C 盘满会 Python 段错误）。
+- 完整说明见 `服务端源码/运行说明.md` §2.1 与 `样例数据集/智引热点/运行说明-样例数据.md`。
+
+## 常见问题：前端能改哪些配置？
+- **运行态配置（可在浏览器改）**：左侧「API 配置」可填 `base_url` / `model` / `API key`，
+  填了**自动保存**到本地 `workspace/settings.json`（本机持久化），启动时自动读回、提问时
+  直接采用（key 留空则改用 `config.yaml` 里的 `llm.api_key`）。这类改的是**运行时端口配置**，
+  与 `config.yaml` 分开、不会覆盖引擎默认。
+- **引擎配置（`config.yaml`，仍需改服务器文件）**：语料路径、embed 参数、预算、评测端点等。
+  `config.yaml` 只在服务端进程启动时读一次（`load_config()`），改完**重启 `streamlit`** 生效。
+- **为什么前端不能直接改 `config.yaml`**：浏览器 JS 出于安全无法写服务器磁盘，所以引擎配置
+  在前端不可写；前端只读/写它自己的 `settings.json` 运行态配置，二者互不影响。
 """
 
 

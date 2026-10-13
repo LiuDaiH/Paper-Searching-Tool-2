@@ -2,9 +2,10 @@
 # 运行：streamlit run scripts/run_ui.py --server.port 8502
 #
 # ⚠️ 外部依赖（不入 PyPI，需自行准备路径）：
-#   - dasc（大创设施）：D:\大学编程学习\obsidian\dasc，sys.path 接线见 hotspot/__init__.py
-#   - md2vectors（工具/）：库根工具，embedding 用
-#   - G 盘 24+25 会议语料 + arXiv 周报 papers.jsonl（config.corpus.*）
+#   - dasc：已 vendor 进 hotspot/vendor/dasc/（自包含，无需外部 obsidian/dasc）
+#   - md2vectors：已 vendor 进 hotspot/vendor/md2vectors.py（导入即自包含，无需外部 工具/）
+#   - bge-m3 权重（BAAI/bge-m3）：HuggingFace 开源模型，联网下载到 HF_HOME（默认 D:\hf_cache）
+#   - 语料：G 盘 24+25 会议 + arXiv 周报 papers.jsonl（config.corpus.*）
 #   - API key：环境变量（llm.api_key_env / llm_eval.api_key_env / apis.api_key_env），永不落盘
 
 streamlit>=1.30
@@ -14,3 +15,5 @@ PyYAML>=6.0
 openai>=1.10
 tqdm>=4.60
 requests>=2.28
+plotly>=5.18             # Streit-Garg 关键路径交互图（st.plotly_chart）
+sentence-transformers>=2.2   # bge-m3 embedding（hotspot/vendor/md2vectors.py 依赖）

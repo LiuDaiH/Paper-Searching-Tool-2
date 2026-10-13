@@ -1,0 +1,18 @@
+{
+  "key": "fb6273c286b5fd09ff091a785420b296",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料标题及内容提出针对多图像MLLM的层级偏好优化（Hierarchical Preference Optimization），并指出现有DPO方法仅约束单一图像参考而忽略整体上下文，与陈述中DPO约束被层级化以解决跨模态错位与幻觉的表述一致。"
+  },
+  "raw": "{\"{\"verdict\": \"supported\", \"reason\": \"材料标题及内容提出针对多图像MLLM的层级偏好优化（Hierarchical Preference Optimization），并指出现有DPO方法仅约束单一图像参考而忽略整体上下文，与陈述中DPO约束被层级化以解决跨模态错位与幻觉的表述一致。\"}",
+  "usage": {
+    "prompt_tokens": 378,
+    "completion_tokens": 327
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:47:43+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nZooming from Context to Cue: Hierarchical Preference Optimization for Multi-Image MLLMs\nMulti-modal Large Language Models (MLLMs) excel at single-image tasks but struggle with multi-image understanding due to cross-modal misalignment, leading to hallucinations (context omission, conflation, and misinterpretation). Existing methods using Direct Preference Optimization (DPO) constrain optimization to a solitary image reference within the input sequence, neglecting holistic context mode\n\n陈述：在多图像 MLLM 场景中，DPO 的约束被进一步层级化，以解决跨模态错位与幻觉 [P:orid:gjvbsLyCC3]。"
+}

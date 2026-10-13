@@ -1,0 +1,18 @@
+{
+  "key": "6ed4071e1c178509986544a0c59eed2f",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料C:0明确列出LLM智能体安全攻击与防御主题，涵盖提示注入、后门、投毒等攻击及防御；且代表论文包含单张图像越狱百万多模态LLM智能体以及用LM模拟沙盘识别LM智能体风险，陈述与材料一致。"
+  },
+  "raw": "{\"ver{\"verdict\": \"supported\", \"reason\": \"材料C:0明确列出LLM智能体安全攻击与防御主题，涵盖提示注入、后门、投毒等攻击及防御；且代表论文包含单张图像越狱百万多模态LLM智能体以及用LM模拟沙盘识别LM智能体风险，陈述与材料一致。\"}",
+  "usage": {
+    "prompt_tokens": 632,
+    "completion_tokens": 464
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:36:45+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\n[C:0] · LLM智能体安全攻击与防御：研究针对LLM智能体的提示注入、后门、投毒等攻击手段及相应的风险评估与防御机制。（31篇）\n   跨会 {'ICML': 8, 'ICLR': 7, 'NeurIPS': 16}；分年 {2024: 5, 2025: 26}；代表 [P:orid:AC5n7xHuR1]\nAgent Smith: A Single Image Can Jailbreak One Million Multimodal LLM Agents Exponentially Fast\nA multimodal large language model (MLLM) agent can receive instructions, capture images, retrieve histories from memory, and decide which tools to use. Nonetheless, red-teaming efforts have revealed that adversarial images/prompts can jailbreak an MLLM and cause unaligned behaviors. In this work, we report an even more severe safety issue in multi-agent environments, referred to as infectious jail\nIdentifying the Risks of LM Agents with an LM-Emulated Sandbox\nRecent advances in Language Model (LM) agents and tool use, exemplified by applications like ChatGPT Plugins, enable a rich set of capabilities but also amplify potential risks—such as leaking private data or causing financial losses. Identifying these risks is labor-intensive, necessitating implementing the tools, setting up the environment for each test scenario manually, and finding risky cases\n\n陈述：- **LLM 智能体安全攻击与防御**也属于智能体热点，覆盖提示注入、后门、投毒等攻击及防御 [C:0]；例如单张图像可指数级越狱百万多模态 LLM 智能体 [P:orid:DYMj03Gbri]，以及用 LM 模拟沙盘识别 LM 智能体风险 [P:orid:GEcwtMk1uA]。"
+}

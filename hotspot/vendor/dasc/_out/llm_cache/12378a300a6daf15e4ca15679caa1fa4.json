@@ -1,0 +1,18 @@
+{
+  "key": "12378a300a6daf15e4ca15679caa1fa4",
+  "model": "deepseek-flash",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料中三篇工作分别对应：MLAgentBench 标题/摘要表明其评测语言智能体进行机器学习实验；AgentBoard 标题表明其为多轮 LLM 智能体的分析式评测台；MedAgentBoard 标题表明其针对多样化医疗任务对多智能体协作与传统方法进行基准比较。因此陈述与材料一致。"
+  },
+  "raw": "{\"verdict\":\"supported\",\"reason\":\"材料中三篇工作分别对应：MLAgentBench 标题/摘要表明其评测语言智能体进行机器学习实验；AgentBoard 标题表明其为多轮 LLM 智能体的分析式评测台；MedAgentBoard 标题表明其针对多样化医疗任务对多智能体协作与传统方法进行基准比较。因此陈述与材料一致。\"}",
+  "usage": {
+    "prompt_tokens": 553,
+    "completion_tokens": 335
+  },
+  "attempts": 1,
+  "at": "2026-10-09T06:59:55+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nMLAgentBench: Evaluating Language Agents on Machine Learning Experimentation\nA central aspect of machine learning research is experimentation, the process of designing and running experiments, analyzing the results, and iterating towards some positive outcome (e.g., improving accuracy). Could agents driven by powerful language models perform machine learning experimentation effectively? To answer this question, we introduce MLAgentBench, a suite of 13 tasks ranging from im\nAgentBoard: An Analytical Evaluation Board of Multi-Turn LLM Agents\nEvaluating large language models (LLMs) as general-purpose agents is essential for understanding their capabilities and facilitating their integration into practical applications. However, the evaluation process presents substantial challenges. A primary obstacle is the benchmarking of agent performance across diverse scenarios within a unified framework, especially in maintaining partially-observ\nMedAgentBoard: Benchmarking Multi-Agent Collaboration with Conventional Methods for Diverse Medical Tasks\nThe rapid advancement of Large Language Models (LLMs) has stimulated interest in multi-agent collaboration for addressing complex medical tasks. However, the practical advantages of multi-agent collaboration approaches remain insufficiently understood. Existing evaluations often lack generalizability, failing to cover diverse tasks reflective of real-world clinical practice, and frequently omit ri\n\n陈述：代表性工作中，MLAgentBench 评测语言智能体执行机器学习实验的能力 [P:orid:1Fs1LvjYQW]；AgentBoard 提供多轮 LLM 智能体的分析式评测台 [P:orid:4S8agvKjle]；MedAgentBoard 则针对多样化医疗任务对多智能体协作与传统方法做基准比较 [P:orid:BPpG4qQaNj]。"
+}

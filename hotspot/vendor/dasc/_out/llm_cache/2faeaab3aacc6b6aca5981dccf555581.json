@@ -1,0 +1,18 @@
+{
+  "key": "2faeaab3aacc6b6aca5981dccf555581",
+  "model": "deepseek-flash",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料标题即为《Multi-Agent Reinforcement Learning with Communication-Constrained Priors》，且正文明确表述'lossy communication is a prevalent issue'（损耗通信是普遍存在的问题）并讨论利用通信提升协作策略学习，与陈述内容一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料标题即为《Multi-Agent Reinforcement Learning with Communication-Constrained Priors》，且正文明确表述'lossy communication is a prevalent issue'（损耗通信是普遍存在的问题）并讨论利用通信提升协作策略学习，与陈述内容一致。\"}",
+  "usage": {
+    "prompt_tokens": 339,
+    "completion_tokens": 131
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:00:01+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nMulti-Agent Reinforcement Learning with Communication-Constrained Priors\nCommunication is one of the effective means to improve the learning of cooperative policy in multi-agent systems. However, in most real-world scenarios, lossy communication is a prevalent issue. Existing multi-agent reinforcement learning with communication, due to their limited scalability and robustness, struggles to apply to complex and dynamic real-world environments. To address these challeng\n\n陈述：在多智能体强化学习方面，有工作研究通信受限先验下的协作策略学习，指出真实场景中损耗通信普遍存在 [P:orid:1m177EsP3V]。"
+}

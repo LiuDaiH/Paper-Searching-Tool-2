@@ -1,0 +1,18 @@
+{
+  "key": "18bf7dc21c6492d08ee0df3c9eee005e",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料明确列出多智能体强化学习与自博弈研究，包含均衡求解、样本效率与内存效率，并给出JaxMARL和对抗团队马尔可夫博弈均衡学习等代表工作，陈述与材料一致且可合理推断。"
+  },
+  "raw": "{\"ver{\"verdict\": \"supported\", \"reason\": \"材料明确列出多智能体强化学习与自博弈研究，包含均衡求解、样本效率与内存效率，并给出JaxMARL和对抗团队马尔可夫博弈均衡学习等代表工作，陈述与材料一致且可合理推断。\"}",
+  "usage": {
+    "prompt_tokens": 638,
+    "completion_tokens": 408
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:24:16+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\n[C:1] · 多智能体强化学习与自博弈算法：研究多智能体强化学习中的均衡求解、样本效率与内存效率，并利用自博弈和优化方法。（19篇）\n   跨会 {'NeurIPS': 7, 'ICLR': 6, 'ICML': 5, 'CoRL': 1}；分年 {2024: 7, 2025: 12}；代表 [P:orid:VYY5sG4EMm]\nJaxMARL: Multi-Agent RL Environments and Algorithms in JAX\nBenchmarks are crucial in the development of machine learning algorithms, significantly influencing reinforcement learning (RL) research through the available environments. Traditionally, RL environments run on the CPU, which limits their scalability with the computational resources typically available in academia. However, recent advancements in JAX have enabled the wider use of hardware accelera\nLearning Equilibria in Adversarial Team Markov Games: A Nonconvex-Hidden-Concave Min-Max Optimization Problem\nWe study the problem of learning a Nash equilibrium (NE) in Markov games which is a cornerstone in multi-agent reinforcement learning (MARL). In particular, we focus on infinite-horizon adversarial team Markov games (ATMGs) in which agents that share a common reward function compete against a single opponent, *the adversary*. These games unify two-player zero-sum Markov games and Markov potential \n\n陈述：- **多智能体强化学习与自博弈**：研究均衡求解、样本效率与内存效率，并利用自博弈和优化方法 [C:1]；例如 JaxMARL 提供 JAX 版多智能体 RL 环境与算法 [P:orid:X90tyXDe8z]，对抗团队马尔可夫博弈中的纳什均衡学习也被关注 [P:orid:BrvLTxEx08]。"
+}

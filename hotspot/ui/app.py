@@ -372,10 +372,12 @@ def _corpus_cfg_key(cfg, kind: str = "meeting"):
 
 
 @st.cache_resource
-def _cached_corpus(_key):
+def _cached_corpus(key):
+    """按数据源 key 缓存语料对象。⚠️ 参数名不能带 `_` 前缀——Streamlit 会把
+    下划线开头的参数**排除出缓存键**，导致所有 key 命中同一槽（切源不切换语料）。"""
     from ..corpus import arXivCorpus, open_corpus
-    if _key[0] == "arxiv":
-        return arXivCorpus(_key[1])
+    if key[0] == "arxiv":
+        return arXivCorpus(key[1])
     return open_corpus()
 
 
@@ -456,6 +458,7 @@ def _init_state(cfg) -> None:
     st.session_state.setdefault("api", {})
     if not st.session_state["api"]:            # 启动时从本地 settings.json 读入
         st.session_state["api"] = _load_api_settings(cfg) or {}
+    st.session_state.setdefault("src", "meeting")
 
 
 def _new_session_id() -> str:
@@ -505,8 +508,12 @@ def _run_with_progress_panel(q, ec, dry, c) -> dict:
         box["cur"] = name
         box["cur_t"] = (cur, total)
         box["st"] = time.time()
+        # 单调递增：只前进不倒退。意图路径中途失败回退 local 时，局部兜底会
+        # 重新报「检索+子聚集」等靠前阶段——若直接覆盖 idx 会让进度条倒跳（乱跳/不稳定）。
         if name in _FP_STAGES:
-            box["idx"] = _FP_STAGES.index(name)
+            ni = _FP_STAGES.index(name)
+            if ni > int(box.get("idx") or 0):
+                box["idx"] = ni
 
     def _worker():
         try:
@@ -753,9 +760,15 @@ def main() -> None:
         cur = st.session_state.get("src", "meeting")
         src_label = st.selectbox("数据源", list(src_opts.values()),
                                  index=0 if cur == "meeting" else 1, key="src_sel")
+        # 单一真源：kind 只看 selectbox 当前值；不同步 st.session_state["src"]。
+        # （避免 label-string ↔ key 双状态在 rerun 中拉锯造成 c 与 kind 不一致）
         kind = "arxiv" if src_label == "arXiv 周报" else "meeting"
-        st.session_state["src"] = kind
-        c = _cached_corpus(_corpus_cfg_key(cfg, kind))
+        # 语料对象显式按 kind 缓存于 session_state（不依赖 st.cache_resource 的
+        # 隐式 key 归约——它曾对 arxiv key 误复用 meeting 缓存导致切源仍显示 2 万+）。
+        if st.session_state.get("corpus_kind") != kind:
+            st.session_state["corpus_kind"] = kind
+            st.session_state["corpus_obj"] = _cached_corpus(_corpus_cfg_key(cfg, kind))
+        c = st.session_state["corpus_obj"]
         st.button("＋ 新对话", use_container_width=True, help="开新会话",
                   on_click=_new_session, args=(cfg,))
         sess = st.session_state["sessions"]
@@ -769,21 +782,22 @@ def main() -> None:
                                 key="pick_session")
             if pick != st.session_state["cur"]:
                 st.session_state["cur"] = pick
-        with st.expander("API 配置（本地 settings.json · 持久化）"):
+        with st.expander("API 配置"):
             api = st.session_state.get("api") or {}
             b = st.text_input("base_url", value=api.get("base_url") or cfg["llm"].get("base_url", ""))
             mo = st.text_input("model", value=api.get("model") or cfg["llm"].get("model_flash", ""))
-            kx = st.text_input("API key（留空=用环境变量 Mobile_trash_API_KEY）",
+            kx = st.text_input("API key",
                                value=api.get("api_key") or "", type="password")
-            if st.button("✓ 保存到本地 settings.json（推荐：key 留空）"):
+            if st.button("✓ 保存到本地"):
                 st.session_state["api"] = {
                     "base_url": b.strip() or None,
                     "model": mo.strip() or None,
                     "api_key": kx.strip() or None,
                 }
                 _save_api_settings(cfg, st.session_state["api"])
-                st.success("已保存；key 留空时自动使用环境变量 Mobile_trash_API_KEY")
-        dry = st.checkbox("dry-run（不真调 LLM）", value=False)
+                st.success("已保存；")
+        # dry-run 不向前端暴露（后台能力保留）：前端恒走真实 LLM
+        dry = False
         st.markdown("---")
         st.caption(_corpus_caption(c, kind))
 

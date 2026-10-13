@@ -1,0 +1,18 @@
+{
+  "key": "5c928265dcc47e873a97375c109bad35",
+  "model": "deepseek-flash",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料标题即为“Discovering Preference Optimization Algorithms with and for Large Language Models”，且摘要指出人工设计的凸损失函数受人类创造力限制，暗示需要/存在自动发现偏好优化算法的工作，因此陈述可从材料合理得出。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料标题即为“Discovering Preference Optimization Algorithms with and for Large Language Models”，且摘要指出人工设计的凸损失函数受人类创造力限制，暗示需要/存在自动发现偏好优化算法的工作，因此陈述可从材料合理得出。\"}",
+  "usage": {
+    "prompt_tokens": 329,
+    "completion_tokens": 247
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:39:43+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nDiscovering Preference Optimization Algorithms with and for Large Language Models\nOffline preference optimization is a key method for enhancing and controlling the quality of Large Language Model (LLM) outputs. Typically, preference optimization is approached as an offline supervised learning task using manually crafted convex loss functions. While these methods are based on theoretical insights, they are inherently constrained by human creativity, so the large search space of \n\n陈述：- 还有工作尝试自动发现偏好优化算法，而非依赖人工设计的凸损失 [P:orid:erjQDJ0z9L]。"
+}

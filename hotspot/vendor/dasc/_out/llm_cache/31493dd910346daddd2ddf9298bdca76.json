@@ -1,0 +1,18 @@
+{
+  "key": "31493dd910346daddd2ddf9298bdca76",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料第一段明确提到DPO用于缓解多模态大语言模型幻觉，并通过对称多模态偏好优化增强视觉注意力；第二段提到DSPO用于扩散模型对齐，替代奖励模型，与陈述一致。"
+  },
+  "raw": "{\"{\"verdict\": \"supported\", \"reason\": \"材料第一段明确提到DPO用于缓解多模态大语言模型幻觉，并通过对称多模态偏好优化增强视觉注意力；第二段提到DSPO用于扩散模型对齐，替代奖励模型，与陈述一致。\"}",
+  "usage": {
+    "prompt_tokens": 492,
+    "completion_tokens": 110
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:47:26+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nMitigating Hallucination Through Theory-Consistent Symmetric Multimodal Preference Optimization\nDirect Preference Optimization (DPO) has emerged as an effective approach for mitigating hallucination in Multimodal Large Language Models (MLLMs). Although existing methods have achieved significant progress by utilizing vision-oriented contrastive objectives for enhancing MLLMs' attention to visual inputs and hence reducing hallucination, they suffer from non-rigorous optimization objective func\nDSPO: Direct Score Preference Optimization for Diffusion Model Alignment\nDiffusion-based Text-to-Image (T2I) models have achieved impressive success in generating high-quality images from textual prompts. While large language models (LLMs) effectively leverage Direct Preference Optimization (DPO) for fine-tuning on human preference data without the need for reward models, diffusion models have not been extensively explored in this area. Current preference learning meth\n\n陈述：它被用于缓解多模态大语言模型的幻觉问题，通过对称多模态偏好优化改进视觉注意力 [P:orid:tIW29IpCwG]；也被扩展到扩散模型对齐，提出直接分数偏好优化（DSPO）以替代奖励模型 [P:orid:xyfb9HHvMe]。"
+}

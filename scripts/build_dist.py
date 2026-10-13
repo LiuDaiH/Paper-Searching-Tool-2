@@ -60,8 +60,33 @@ streamlit run scripts/run_ui.py --server.port 8502
 | 会议语料 24+25 | `G:\\rl_data24\\资源\\papers.jsonl`、`G:\\rl_data\\资源\\papers.jsonl` | 会议库（22,747 篇）|
 | arXiv 周报语料 | `D:\\大学编程学习\\arXiv周报\\数据\\papers.jsonl` | arXiv 独立源（4,369 篇）|
 | bge-m3 权重 | `D:\\hf_cache`（HF_HOME，~2.3GB）| embedding（离线）|
-| dasc 算法 | **已 vendor 进 `hotspot/vendor/dasc/`（自包含，无需外部 dasc）**；`工具/md2vectors.py` 仍需外部 | 聚类/MPS/rlRAG/LLM client |
-| API key | 环境变量 `Mobile_trash_API_KEY` 等（`config.yaml` 的 `*.api_key_env` 指定变量名）| LLM，**永不落盘** |
+| dasc 算法 | **已 vendor 进 `hotspot/vendor/dasc/`（自包含，无需外部 dasc）**；`md2vectors.py` 也已 vendor 进 `hotspot/vendor/md2vectors.py`（导入即自包含）| 聚类/MPS/rlRAG/LLM client / embedding |
+| API key | 前端「API 配置」填入→ `workspace/settings.json`；或 `config.yaml` 的 `llm.api_key` | LLM |
+
+### 2.1 bge-m3 获取与接口配置
+
+bge-m3（`BAAI/bge-m3`，XLM-R-large 568M / 1024 维）是 **HuggingFace 开源模型**，不在交付包内，需联网下载**一次**，之后**离线加载**。项目通过 **`hotspot/vendor/md2vectors.py`（已随包 vendor）** 加载：
+- `embed()` 优先调 `_resolve_local_model`：把模型名解析成**本地 snapshot 绝对路径**（`$HF_HOME/hub/models--BAAI--bge-m3/snapshots/<commit>/`，完整性抽查 `pytorch_model.bin/config.json/tokenizer.json/modules.json`）再 `SentenceTransformer(路径)` **离线加载、不联网**；解析不到才回退按模型名（会联网）。
+- `md2vectors.py` 里 `os.environ.setdefault("HF_HOME", r"D:\\hf_cache")` —— **机器上没设 `HF_HOME` 就默认用 D 盘这份**；若外部已设则以外为准（`setdefault` 不覆盖）。只要模型在默认位置就**零配置**。
+
+**获取与放置（二选一，推荐 A）：**
+
+- **方式 A（默认约定）**：下载到默认位置，机器上不设 `HF_HOME` 即可零配置：
+  ```bash
+  pip install huggingface_hub sentence-transformers
+  huggingface-cli download BAAI/bge-m3 --local-dir D:\\hf_cache\\hub\\models--BAAI--bge-m3
+  ```
+  落盘布局应为 `D:\\hf_cache\\hub\\models--BAAI--bge-m3\\snapshots\\<commit>\\...`（`hub/` 层不可省）。
+- **方式 B（自定义位置）**：
+  ```bash
+  setx HF_HOME E:\\my_hf_cache          # 先设变量，再下载
+  huggingface-cli download BAAI/bge-m3 --local-dir E:\\my_hf_cache\\hub\\models--BAAI--bge-m3
+  ```
+  之后重开终端生效；模型就位后
+  `python -c "import os, sys; sys.path.insert(0,'.'); import md2vectors; print(md2vectors._resolve_local_model('BAAI/bge-m3'))"` 应打印**本地 snapshot 路径**（而非模型名）。
+
+**还需要**：`torch`（CPU 即可，见 `md2vectors.py:6` 注释）+ `sentence-transformers>=2.2`（requirements 已加）。
+**注意**：权重放 C 盘可能爆盘（C 盘满会导致 Python 段错误，见 `md2vectors.py:40-42`），建议放 `D:/E:` 等数据盘。
 
 > 若在某机器没有 G 盘 24+25 或 arXiv 周报，可在 `config.yaml` 的 `corpus.sources` /
 > `corpus.arxiv_source` 指到存在的语料；只有会议库缺也没关系——检索会用现有的源。
@@ -87,7 +112,7 @@ python scripts/update_arxiv_weekly.py          # 之后每周(只处理新增，
 ## 5. 常见问题
 - **sklearn 版本警告**（`unpickle RF ... 1.7.2 vs 1.6.1`）：`future_rf.pkl` 用 1.7.x 导出，
   请把运行环境 scikit-learn 升到 1.7.x 或重导模型，否则 rlRAG 评分微偏。
-- **API key 未设**：设环境变量 `Mobile_trash_API_KEY`（或改 `config.yaml` 的 `llm.api_key_env`）。
+- **API key 未设**：在左侧「API 配置」填入 key（自动存 `workspace/settings.json`），或改 `config.yaml` 的 `llm.api_key`（需重启 streamlit）。
   ⚠️ 不要写进任何入库文件。
 - **端口被占**：换 `--server.port`。远程访问记得 `--server.headless true`。
 - **内网穿透**：frp 示例 `frpc.ini` 里 `remote_port` 转发到本机 8502；ngrok 等同理。

@@ -1,0 +1,18 @@
+{
+  "key": "d5a2fb020263d2f428e332dc4fe135c4",
+  "model": "deepseek-v4-flash-0731",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料明确描述多智能体学习与优化涵盖预测、公平、逆学习或模仿等方式，且代表论文涉及预测其他学习者行为以最大化效用和公平多智能体社会福利优化，陈述与材料一致。"
+  },
+  "raw": "{\"{\"verdict\": \"supported\", \"reason\": \"材料明确描述多智能体学习与优化涵盖预测、公平、逆学习或模仿等方式，且代表论文涉及预测其他学习者行为以最大化效用和公平多智能体社会福利优化，陈述与材料一致。\"}",
+  "usage": {
+    "prompt_tokens": 625,
+    "completion_tokens": 210
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:24:24+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\n[C:2] · 多智能体学习与优化：研究多智能体环境中通过预测、公平、逆学习或模仿等方式优化效用与决策的学习方法。（18篇）\n   跨会 {'NeurIPS': 7, 'ICLR': 4, 'ICML': 7}；分年 {2024: 7, 2025: 11}；代表 [P:orid:4JyULSyPl6]\nMaximizing Utility in Multi-Agent Environments by Anticipating the Behavior of Other Learners\nLearning algorithms are often used to make decisions in sequential decision-making environments. In multi-agent settings, the decisions of each agent can affect the utilities/losses of the other agents. Therefore, if an agent is good at anticipating the behavior of the other agents, in particular how they will make decisions in each round as a function of their experience that far, it could try to\nNo-Regret Learning for Fair Multi-Agent Social Welfare Optimization\nWe consider the problem of online multi-agent Nash social welfare (NSW) maximization. While previous works of Hossain et al. [2021], Jones et al. [2023] study similar problems in stochastic multi-agent multi-armed bandits and show that $\\sqrt{T}$-regret is possible after $T$ rounds, their fairness measure is the product of all agents' rewards, instead of their NSW (that is, their geometric mean). \n\n陈述：- **多智能体学习与优化**：通过预测、公平、逆学习或模仿等方式优化效用与决策 [C:2]；例如通过预测其他学习者的行为来最大化自身效用 [P:orid:0uGlKYS7a2]，以及公平多智能体社会福利优化 [P:orid:15Jm9v7wCo]。"
+}

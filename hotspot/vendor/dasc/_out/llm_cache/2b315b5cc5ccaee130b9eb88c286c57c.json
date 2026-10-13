@@ -1,0 +1,18 @@
+{
+  "key": "2b315b5cc5ccaee130b9eb88c286c57c",
+  "model": "deepseek-flash",
+  "ok": true,
+  "data": {
+    "verdict": "supported",
+    "reason": "材料标题即为《Human Alignment of Large Language Models through Online Preference Optimisation》，直接表明存在以在线偏好优化处理大模型人类对齐问题的工作，陈述与材料一致。"
+  },
+  "raw": "{\"verdict\": \"supported\", \"reason\": \"材料标题即为《Human Alignment of Large Language Models through Online Preference Optimisation》，直接表明存在以在线偏好优化处理大模型人类对齐问题的工作，陈述与材料一致。\"}",
+  "usage": {
+    "prompt_tokens": 343,
+    "completion_tokens": 92
+  },
+  "attempts": 1,
+  "at": "2026-10-09T07:39:40+00:00",
+  "system": "引用校验员：只输出 JSON {\"verdict\": \"supported\" | \"unsupported\", \"reason\": \"\"}。按上述偏向判定。",
+  "user": "以下是证据材料与一条陈述。判定：若陈述能从材料**合理得出或与材料一致**（包括由材料可推断的规模、跨会、分年、趋势等数字），判 `supported`；仅当材料**完全无法支撑、明显无据或与材料矛盾**时才判 `unsupported`。宁可因材料覆盖不足而偏向 `supported`，也不要把有据推断误判为无据。\n\n材料：\nHuman Alignment of Large Language Models through Online Preference Optimisation\nEnsuring alignment of language model’s outputs with human preferences is critical to guarantee a useful, safe, and pleasant user experience. Thus, human alignment has been extensively studied recently and several methods such as Reinforcement Learning from Human Feedback (RLHF), Direct Policy Optimisation (DPO) and Sequence Likelihood Calibration (SLiC) have emerged. In this paper, our contributio\n\n陈述：- 也有工作直接以\"在线偏好优化\"来处理大模型的人类对齐问题 [P:orid:2RQqg2Y7Y6]。"
+}
