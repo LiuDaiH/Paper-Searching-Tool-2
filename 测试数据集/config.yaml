@@ -1,0 +1,31 @@
+# 前端测试数据集运行配置（从 G:\work!\智引热点\ 复制的独立测试源）
+# 前端开发只用这一份数据；核心代码版本仍以 G:\work!\智引热点\ = 项目根 hotspot+scripts 为准。
+# ⚠️ 路径用绝对路径指向本目录：HOTSPOT_ROOT 是代码根（仓库），config 相对路径会解析到仓库，
+#    故这里显式给绝对路径，保证前端加载本 config 时读的是本测试数据集。
+corpus:
+  sources:
+    - D:\大学编程学习\移动云杯\测试数据集\workspace\sample_meeting.jsonl   # 测试子集：1200 篇会议
+  arxiv_source: D:\大学编程学习\移动云杯\测试数据集\workspace\sample_arxiv.jsonl   # 测试子集：600 篇 arXiv
+
+paths:
+  workspace: D:\大学编程学习\移动云杯\测试数据集\workspace
+
+embed:
+  model: BAAI/bge-m3
+  chunk_size: 500
+
+llm:
+  api_key_env:
+  base_url:
+  model_flash:
+  model_pro:
+  timeout: 600
+
+llm_eval:
+  base_url:
+  model:
+  api_key_env:
+  timeout: 600
+
+rlrag: {enabled: false}
+streit_garg: {enabled: false}
