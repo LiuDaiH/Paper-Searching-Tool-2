@@ -53,6 +53,7 @@ CONFIG = {
     # 不登记它，检查会把设计报成缺陷。
     "no_readme_ok": {
         "日志": "根直辖，索引在根 README §2（folder-readme 手册 §2）",
+        "规划": "根直辖，索引在根 README §2（folder-readme 手册 §2）",
     },
 }
 
