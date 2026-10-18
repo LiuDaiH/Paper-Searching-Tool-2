@@ -287,6 +287,9 @@ def main() -> None:
     sources = {s["key"]: s for s in meta.get("sources") or []}
     src_keys = list(sources) or ["meeting"]
 
+    # 检索参数：整个侧栏里生成，提交时随请求带走（无会话状态）
+    params_now: dict = {}
+
     with st.sidebar:
         st.subheader("会话")
         cur_src = st.session_state.get("src", "meeting")
@@ -321,6 +324,39 @@ def main() -> None:
                                            "api_key": kx.strip() or None}
                 store.save_api_settings(cfg, st.session_state["api"])
                 st.success("已保存")
+
+        with st.expander("检索参数", expanded=False):
+            # 表单**由 meta.params 自动生成**：加参数只改 contract.PARAM_SPEC，这里不用动
+            saved = store.load_params(cfg)
+            groups: dict[str, list] = {}
+            for prm in meta.get("params") or []:
+                groups.setdefault(prm.get("group") or "其它", []).append(prm)
+            for gname, items in groups.items():
+                st.caption(gname)
+                for prm in items:
+                    key = prm["key"]
+                    label = prm.get("label") or key
+                    lo, hi = prm.get("min"), prm.get("max")
+                    if prm.get("type") == "bool":
+                        params_now[key] = st.checkbox(
+                            label, value=bool(saved.get(key, prm.get("value"))),
+                            key=f"pp_{key}", help=prm.get("help") or "")
+                    else:
+                        val = saved.get(key, prm.get("value")) or 0
+                        try:
+                            val = int(val)
+                        except (TypeError, ValueError):
+                            val = int(prm.get("default") or 0)
+                        if lo is not None:
+                            val = max(val, int(lo))
+                        if hi is not None:
+                            val = min(val, int(hi))
+                        params_now[key] = st.number_input(
+                            label, value=val,
+                            min_value=int(lo) if lo is not None else None,
+                            max_value=int(hi) if hi is not None else None,
+                            step=int(prm.get("step") or 1),
+                            key=f"pp_{key}", help=prm.get("help") or "")
 
         st.markdown("---")
         info = sources.get(src_key) or {}
@@ -357,6 +393,7 @@ def main() -> None:
                 "role": m["role"], "text": m.get("text") or "",
                 "citation_ids": m.get("citation_ids") or []})
 
+    store.save_params(cfg, params_now)
     req = AskRequest.from_dict({
         "question": q,
         "source": src_key,
@@ -364,6 +401,7 @@ def main() -> None:
         "history": hist_msgs,
         "llm": LLMConfig(base_url=api_now["base_url"], model=api_now["model"],
                          api_key=api_now["api_key"]).__dict__,
+        "params": params_now,
     })
     try:
         resp = _run_with_progress(eng, req)

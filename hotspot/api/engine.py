@@ -471,7 +471,8 @@ class Engine:
             if ret_client is not None and ret.get("query_rewrite", True):
                 q = rewrite(req.question, client=ret_client)
                 if q:
-                    ids = list(c.search(q, k=top)) or ids
+                    # 并集检索：长句/纯中文问题的唯一活路（见 _search_union docstring）
+                    ids = self._search_union(c, q, top) or ids
             body, evidence = self._local_body(c, ids)
             allowed = frozenset(evidence) | self._card_ids(cfg)
 
@@ -637,6 +638,28 @@ class Engine:
                 member_ids=[str(x) for x in (d.get("evidence_ids") or [])[:20]]))
         body = "\n\n".join(lines) or "（无相关簇卡片）"
         return body, frozenset(used), topics
+
+    @staticmethod
+    def _search_union(corpus, query: str, k: int) -> list[str]:
+        """把长查询拆成词**逐个检索再并集**（按命中词数排序）。
+
+        为什么不能直接用 `corpus.search(query)`：它是**全词 AND**
+        （`term_set <= hay` 才命中）。LLM 改写出来的句子动辄 6–10 个词，
+        几个泛词（methods / systems / based）凑不齐就整体 0 命中——
+        「多智能体」这类纯中文问题会一路空到模型嘴里变成"本库无相关内容"。
+        """
+        stop = {"the", "and", "for", "with", "from", "into", "using", "based",
+                "study", "paper", "papers", "method", "methods", "approach",
+                "approaches", "system", "systems", "toward", "towards", "via",
+                "recent", "new", "work", "works", "review", "survey", "analysis"}
+        terms = [t for t in _words(query) if len(t) > 2 and t not in stop][:8]
+        if not terms:
+            return []
+        score: dict[str, int] = {}
+        for t in terms:
+            for pid in corpus.search(t, k=max(k, 20)):
+                score[pid] = score.get(pid, 0) + 1
+        return sorted(score, key=lambda pid: (-score[pid], pid))[:k]
 
     @staticmethod
     def _local_body(corpus, ids) -> tuple[str, dict[str, str]]:

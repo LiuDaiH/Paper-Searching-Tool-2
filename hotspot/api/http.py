@@ -153,11 +153,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache, no-transform")
-        self.send_header("Connection", "keep-alive")
+        # 没有 Content-Length 的流：明确告知「写完就关」，否则客户端会尝试复用
+        # 这条已关闭的连接，Windows 上表现为 ConnectionAborted(10053)
+        self.send_header("Connection", "close")
         self.send_header("X-Accel-Buffering", "no")
         self._cors()
         self.end_headers()
 
+        self.close_connection = True
         closed = {"v": False}
 
         def write(chunk: str) -> None:

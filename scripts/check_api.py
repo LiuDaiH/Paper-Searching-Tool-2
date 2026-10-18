@@ -8,7 +8,8 @@
   1. 契约往返：`AskRequest.from_dict` → `to_dict` → JSON 可序列化
   2. 参数白名单：未知键/越界/类型错都**必须报错**（不静默忽略）
   3. 响应形状：`AskResponse.to_dict()` 的键齐全且 JSON 可序列化
-  4. HTTP 骨架：/api/health、/api/meta、/api/ask（含 SSE 流式）、坏请求 400、未知路由 404
+  4. 检索语义：长句 AND 必空，并集检索必须能召回（2026-10-18 真实故障回归）
+  5. HTTP 骨架：/api/health、/api/meta、/api/ask（含 SSE 流式）、坏请求 400、未知路由 404
 
 ⚠️ 不碰语料、不碰 LLM：用 StubEngine 顶替，所以在任何机器上都能跑绿。
 """
@@ -155,7 +156,7 @@ def _post(url: str, payload=None, raw: bytes | None = None):
 
 
 def check_http() -> None:
-    print("[2] HTTP 冒烟")
+    print("[4] HTTP 冒烟")
     srv = create_server("127.0.0.1", 0, engine=StubEngine(), quiet=True)
     th = threading.Thread(target=srv.serve_forever, daemon=True)
     th.start()
@@ -204,7 +205,38 @@ def check_http() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# 3) 真引擎的 meta 也不该崩（数据缺失 → 降级 + warning）
+# 3) 检索语义：corpus.search 是全词 AND，长句必须走并集
+# ══════════════════════════════════════════════════════════════════════
+
+
+def check_search_semantics() -> None:
+    """用合成语料验证：长句直接搜会 0 命中，`_search_union` 必须能召回。
+
+    这是 2026-10-18 实测到的真实故障：问「多智能体」→ 改写成长英文句 →
+    AND 命中 0 → 空上下文 → 模型答"本库无相关内容"。不修就会被当成"库里没有"。
+    """
+    print("[2] 检索语义")
+    from hotspot.corpus import MergedCorpus, Paper
+
+    c = MergedCorpus.__new__(MergedCorpus)
+    papers = [
+        Paper(paper_id="p1", title="Multi-Agent Reinforcement Learning for Coordination",
+              abstract="We study multi-agent systems and cooperative agents."),
+        Paper(paper_id="p2", title="Scaling MARL with Centralized Critics",
+              abstract="A multi-agent reinforcement learning method."),
+    ]
+    c._papers = papers
+    c._by_id = {p.paper_id: p for p in papers}
+
+    long_q = "multi-agent reinforcement learning methods for cooperative robotics systems"
+    check("长句 AND 命中为 0（旧行为）", c.search(long_q, k=10) == [])
+    hits = Engine._search_union(c, long_q, 8)
+    check("并集检索能召回", len(hits) >= 2 and "p1" in hits, str(hits))
+    check("空查询不炸", Engine._search_union(c, "", 8) == [])
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 4) 真引擎的 meta 也不该崩（数据缺失 → 降级 + warning）
 # ══════════════════════════════════════════════════════════════════════
 
 
@@ -223,6 +255,8 @@ def main() -> int:
     print(f"契约版本 {CONTRACT_VERSION} · 参数 {len(PARAM_SPEC)} 个\n")
     check_contract()
     print()
+    check_search_semantics()
+    print()
     check_engine_meta()
     print()
     check_http()
@@ -232,7 +266,7 @@ def main() -> int:
         for f in FAILS:
             print("   -", f)
         return 1
-    print("✓ 接口自检全绿（契约 / 参数 / HTTP / SSE）")
+    print("✓ 接口自检全绿（契约 / 参数 / 检索语义 / HTTP / SSE）")
     return 0
 
 

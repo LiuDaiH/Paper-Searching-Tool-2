@@ -51,6 +51,15 @@ git ls-files | grep -i "检索\|retrieval"
 **只有一种情况用 Explore 子代理**：完全不知道在哪、且要跨 5 个以上目录。
 用的时候把范围写死（例如"只看 `hotspot/retrieval/` 和 `hotspot/reasoning/`"），别让它自由探索。
 
+两条实测踩过的坑：
+
+- **数文件用 `git ls-files`，别用 `find .`**：本地还有未跟踪的 `workspace/` 和 `vendor/.../_out/`，
+  `find` 会数出 633 个文件，而仓库实际只有 118 个。
+- **优先 `rg`**（读 `.gitignore`，自动跳过产物）；没装再用
+  `grep -rn --include=*.py <符号> . | grep -v vendor`。
+- **检索语义**：`corpus.search()` 是**全词 AND**。长句或中文改写结果要先拆词再做并集
+  （`Engine._search_union`），否则会出现"库里有 MARL，但问多智能体却答本库无相关内容"。
+
 ## 4. 大文件怎么读（不要整篇读）
 
 | 文件 | 行数 | 先 grep 这些入口 |

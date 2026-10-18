@@ -18,7 +18,8 @@ RL 永远 >= heat 但追不上 RF。**所以本模块用 RF(S+A) 先验，不用
 「它是不是那份会被后续工作吸收/引用的、值得读/该引的」——比纯语义/热度
 多一层"未来价值"结构信号。且 RF 打分**不依赖 query**（单侧），对候选池整体排序。
 
-**模型**：`dasc/_out/rlr/future_rf.pkl`（由 `dasc/rlr/export_future_rf.py` 导出）。
+**模型**：`dasc/_out/rlr/future_rf.pkl`（由**外部** dasc 副本的 `rlr/export_future_rf.py` 导出，
+**不在本仓库**）。本仓库内唯一的训练脚本是 `scripts/export_future_rf_arxiv.py`（周报 RF，R3）。
 ⚠️ 依赖 G 盘论文数据构建年份/标签的那步只在**导出**时做一次；推理只读
 `future_rf.pkl` + `rl_prep`，不再碰 G 盘。数据缺 → 明确报错，绝不假装可排序。
 """
