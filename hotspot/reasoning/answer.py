@@ -25,15 +25,19 @@ ANSWER_SCHEMA = {
 
 
 def generate_answer(context: Context, *, cfg=None, dry_run: bool = False,
-                    model: str | None = None) -> str:
+                    model: str | None = None, client=None) -> str:
     """生成答案文本。`context.prefix` 里已把引用格式与三态红线写死。
 
     用 `ask_free`（纯文本，不 JSON）——JSON object 模式会让部分模型把 schema
     结构回显而非产出带引用的自然语言（实测移动云模型会返回 `{"answer":{...}}`）。
+
+    `client` 可传入复用连接（服务层传同一个 client，才能把本次 token 用量
+    统一记到 `.usage` 上）；不传则自建一个（旧调用方式保持可用）。
     """
     cfg = cfg or load_config()
     pro = (cfg.get("llm") or {}).get("model_pro")
-    client = make_client(cfg, model=model or pro or "deepseek-chat", dry_run=dry_run)
+    client = client or make_client(cfg, model=model or pro or "deepseek-chat",
+                                   dry_run=dry_run)
     user = (context.body + "\n\n" if context.body and context.body.strip() else "") \
         + "用户问题：" + context.question
     # 摘要出境闸：dasc 上限 8000 字符（MAX_INPUT_CHARS）。若装配出的材料过长

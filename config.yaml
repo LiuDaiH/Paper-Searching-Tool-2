@@ -69,9 +69,19 @@ retrieval:
   top_k_direction_fts: 1000     # L1 方向选择器：FTS5 尽力召回的上限（建子语料，尽力多收）
   top_k_local: 8                # LOCAL 路径现场取摘要的篇数
   top_k_vector: 50              # 向量召回候选数（作为 FTS5 的补充路）
+  top_query_direct: 8           # 关键词直投：BM25 直接命中的篇数（无条件进上下文，救稀疏主题）
+  followup_rounds: 3            # 追问模式读取最近几轮对话
   llm_router: true              # 在线路由用 LLM 增强（关键词命中/REFUSE 仍规则优先，失败退 LOCAL）
   query_rewrite: true           # 在线检索前用 LLM 做查询改写（提升召回，失败退原文）
   vector_store: none            # 22,747 × 1024 fp32 ≈ 93 MB，numpy 暴力毫秒级；不引向量库
+
+# ── 接口层参数默认值（前端设置页由 hotspot/api/contract.PARAM_SPEC 自动生成）──
+#   请求里的 `params` 覆盖这里；白名单外的参数会被 400 拒绝（不静默忽略）。
+api:
+  max_topics: 6                 # 回答里最多命名/展示几个主题簇
+  max_evidence: 8               # 进上下文的证据论文条数
+  evidence_chars: 300           # 每篇证据摘要保留多少字符
+  followup_papers: 4            # 追问时把前文引用过的几篇论文并进上下文（0=不带）
 
 spread:
   # ── 跨会扩散三态（方案 §3.2）—— 纯计数，0 token ──
