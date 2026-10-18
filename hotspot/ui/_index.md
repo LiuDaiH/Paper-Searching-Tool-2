@@ -4,6 +4,8 @@ tags: [索引]
 
 # hotspot/ui · `_index`（L6 交互层 · Streamlit 适配）
 
+> **给 AI**：只需读 `app.py` 的 `main` 与 `_render_assistant`；接口细节不在这里，去 `../api/`。
+
 ## 1. 这个文件夹是什么
 
 **Streamlit 渲染适配**：只负责画页面、存会话、存本机 API 配置。

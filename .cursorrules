@@ -1,0 +1,4 @@
+本项目 AI 入口：AGENTS.md（先读「按任务查表」）。
+规则：按任务只读 2-4 个文件；禁读 hotspot/vendor/、workspace/、hotspot/vendor/dasc/_out/。
+前端只准 import hotspot.api；接口只增不改。
+改完跑：python scripts/check_api.py 与 python scripts/check_tree.py --vault .
