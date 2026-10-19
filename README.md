@@ -84,6 +84,7 @@ tags: [索引, 说明书]
 |---|---|
 | `workspace/` | **数据产物**（vectors/clusters/metrics/cards/ledger），可重建，不读 |
 | `hotspot/vendor/` | 第三方 vendored 副本（dasc，179k 字符）；`_out/` 是 LLM 缓存与审计日志，**2026-10-18 起不入库**（407 个 JSON，纯粹是搜索噪声） |
+| `.claude/skills/` / `.agents/skills/` | skill 源：`.claude` 是唯一源；`.agents` 是 Codex 兼容入口（当前工作区为 junction，新克隆见 `AGENTS.md` §9） |
 | `.zhanlu/` | skill 与配置，不属于项目文档 |
 | 导师库 `D:\大学编程学习\obsidian\rl_acdemical_paper` | 外部只读，四道闸，本项目不写它一个字 |
 

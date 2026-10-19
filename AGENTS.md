@@ -101,3 +101,11 @@ python scripts/check_tree.py --vault .   # 索引树：悬空链接 / 孤儿 md 
 | `workspace/`（可重建产物） | ♻️ 重建，不提交 |
 | `G:\rl_data24`、`G:\rl_data`、导师库 | ❌ 只读 |
 | `hotspot/vendor/` | ⚠️ 尽量不改（改了要写原因） |
+
+## 9. Skill 部署
+
+- **唯一源**：`.claude/skills/`（Claude Code 项目级 skill 目录）。
+- **Codex 兼容入口**：`.agents/skills` 在 Windows 上是指向 `.claude/skills` 的目录
+  junction；不要把它当第二份源，也不要在 `.agents` 里单独改 skill。
+- 新克隆或非 Windows 环境若 `.agents/skills` 变成普通目录，以 `.claude` 为准重建链接
+  或同步副本；改完用 `python -X utf8 .../quick_validate.py .claude/skills/<name>` 校验。

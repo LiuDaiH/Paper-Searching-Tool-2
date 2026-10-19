@@ -40,6 +40,7 @@ CONFIG = {
     # `research-log` 命中 `科研设施/research-log/`（skill 源）。
     "data_rules": [
         ".git", ".zhanlu", "__pycache__", ".venv", "node_modules",
+        ".agents", ".claude",  # skill 部署目录，不是项目文档树
         "workspace",       # 数据产物：向量/聚类/metrics/cards/ledger，可重建，不读
         "research-log",    # skill 源（照搬自 /日志 skill），是模板不是树的文档
         "vendor",          # 第三方 vendored 代码副本（dasc），非树的文档
