@@ -21,7 +21,7 @@ tags: [索引, 说明书]
 ## 2. 直辖文件夹
 
 - **`日志/`**：研究日志（**流水账**）——**没有子 README，由本文件直接管辖**。格式见 `.zhanlu/skill/research-log`。各篇：
-  - `2026-10-19-样例数据集接口复测.md` —— 按 API v1 契约用 1,200+600 篇样例复测：离线 32 项全绿、HTTP/SSE、Streamlit、真实 `POST /api/ask`（topics↔[C:x] 对齐）与追问；修 `api_key_env` 与 `HOTSPOT_CONFIG`
+  - `2026-10-19-样例数据集接口复测.md` —— 样例 1,200+600 与全量 G（22,747+5,173）两轮接口复测：离线 32 项全绿、HTTP/SSE、Streamlit、真实 `POST /api/ask`（topics↔[C:x] 对齐）与追问；全量 live 352.5s、3 条引用全 supported；修 `api_key_env` 与 `HOTSPOT_CONFIG`
   - `2026-10-18-前后端解耦·接口收口.md` —— 接口层地基：11 模块/19 符号 → 2 个接口；编排搬进 `hotspot/api/engine.py`；HTTP（含 SSE）+ 参考前端；顺手修掉 `_maybe_keypath` 相对导入 bug
   - `2026-10-06-B档发布与修复.md` —— B 档交付（G:\work! 三件套）、MPS 卡死根治、评测修复与专项指标、corpus 相对路径解析
   - `2026-10-07-大创4组评测结果.md` —— 端点修复后全量 G0–G3 70 题×4 组结果：rlRAG 有效、SG 次要、全接入不叠加；run_eval 的 key_path=None 崩溃修复
