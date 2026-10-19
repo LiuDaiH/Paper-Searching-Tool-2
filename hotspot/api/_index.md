@@ -21,7 +21,9 @@ tags: [索引]
 - 引擎 ✅ 编排已从 `hotspot/ui/app.py` 搬入（意图路径 / 兜底路径 / 追问 / 图谱 / 用量）
 - HTTP ✅ 标准库实现（含 SSE 进度、静态托管、CORS），**零第三方依赖**
 - 自检 ✅ `python scripts/check_api.py` 全绿（契约往返 / 参数校验 / HTTP / SSE）
-- 待接：账号系统（前端）、跑真数据回归（G 盘或测试数据集）
+- 样例数据回归 ✅ 2026-10-19：`测试数据集/config.yaml` + 真实 `POST /api/ask` 返回 200，
+  `topics.cluster_id` 与答案 `[C:x]` 对齐；追问 `citation_ids` 已实测
+- 待接：账号系统（前端）、全量 G 盘语料回归
 
 ## 3. 文件清单
 

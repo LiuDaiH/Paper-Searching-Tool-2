@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dasc.llm.client import Budget, Client, LLMError  # noqa: F401
 
 from .config import load_config
@@ -26,16 +28,21 @@ def make_budget(cfg=None) -> Budget:
 
 def make_client(cfg=None, *, model: str | None = None, dry_run: bool = False,
                 timeout: float | None = None, api_key: str | None = None) -> Client:
-    """构造 Client。key 只认显式 `api_key` 或 `cfg.llm.api_key`（都来自前端填入/本地
-    settings.json），**绝不回退到任何环境变量**。key 为空且非 dry_run 时直接报错，
-    提示去前端填写。`timeout` 取参 > config.llm.timeout > dasc 默认 120s。"""
+    """构造 Client。
+
+    key 优先级：显式 ``api_key`` > ``cfg.llm.api_key`` > ``cfg.llm.api_key_env``
+    指向的环境变量。环境变量只在配置里**显式写出变量名**时读取，不扫描任意变量。
+    ``timeout`` 取参 > config.llm.timeout > dasc 默认 120s。
+    """
     cfg = cfg or load_config()
     llm = cfg.get("llm") or {}
     key = api_key or llm.get("api_key")
+    if not key and llm.get("api_key_env"):
+        key = os.environ.get(str(llm["api_key_env"]), "")
     if not key and not dry_run:
         raise LLMError(
             "未配置 API key：请在前端侧栏「API 配置」填写 API key 后提问。"
-            "（程序只认前端填入/本地 settings.json 的 key，不再读环境变量。）"
+            "（也可在配置中显式设置 llm.api_key_env 指向环境变量。）"
         )
     to = timeout if timeout is not None else llm.get("timeout")
     return Client(

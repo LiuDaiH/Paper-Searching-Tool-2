@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,11 @@ __all__ = ["load_config", "paths_from"]
 
 def load_config(path: Path | str | None = None) -> dict[str, Any]:
     """读 `config.yaml`。返回原始 dict（不套对象——够用，且不引抽象代价）。"""
-    cfg_path = Path(path) if path else hotspot.HOTSPOT_ROOT / "config.yaml"
+    # 显式参数 > HOTSPOT_CONFIG 环境变量 > 仓库根 config.yaml。
+    # 前端/测试可在不改代码的情况下切到 测试数据集/config.yaml。
+    cfg_path = Path(path) if path else Path(
+        os.environ.get("HOTSPOT_CONFIG") or hotspot.HOTSPOT_ROOT / "config.yaml"
+    )
     with cfg_path.open("r", encoding="utf-8") as fh:
         return yaml.safe_load(fh) or {}
 

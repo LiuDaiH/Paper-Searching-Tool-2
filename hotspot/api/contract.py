@@ -53,6 +53,15 @@ E_LLM_FAILED = "llm_failed"
 E_INTERNAL = "internal_error"
 
 
+def normalize_base_url(url: str) -> str:
+    """接受 base URL 或完整 ``/chat/completions`` 端点，统一成 base URL。"""
+    u = str(url or "").strip().rstrip("/")
+    suffix = "/chat/completions"
+    if u.endswith(suffix):
+        u = u[: -len(suffix)].rstrip("/")
+    return u
+
+
 class ApiError(Exception):
     """契约级错误。`code` 稳定可判，`message` 面向用户，`status` 是 HTTP 状态码。"""
 
@@ -140,15 +149,18 @@ class LLMConfig:
             return cfg
         llm = dict(cfg.get("llm") or {})
         if self.base_url:
-            llm["base_url"] = self.base_url
+            llm["base_url"] = normalize_base_url(self.base_url)
         if self.model:
             llm["model_flash"] = self.model
             llm["model_pro"] = self.model
         if self.api_key:
             llm["api_key"] = self.api_key
+            # 有显式 key 时切断环境变量，避免请求 key 被服务端 key 覆盖。
+            llm.pop("api_key_env", None)
         else:
             llm.pop("api_key", None)
-        llm.pop("api_key_env", None)   # 运行期绝不再从环境变量取 key
+            # 没有显式 key 时保留配置里的 api_key_env，让服务端 key
+            # 与 meta.has_server_key 的语义一致。
         cfg["llm"] = llm
         return cfg
 
