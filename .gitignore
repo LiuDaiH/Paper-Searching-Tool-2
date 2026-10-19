@@ -16,3 +16,7 @@ venv/
 *.log
 .DS_Store
 .playwright-mcp/
+
+# dasc 运行时产物：LLM 响应缓存 + 出境审计日志（本机可重建，v 别入库）
+# 406 个 JSON 会把 grep/搜索淹掉，clone 也多 2 MB
+hotspot/vendor/dasc/_out/

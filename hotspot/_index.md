@@ -4,6 +4,9 @@ tags: [索引]
 
 # hotspot · `_index`
 
+> **给 AI**：先读根 `../AGENTS.md` 的「按任务查表」，别从本目录开始翻。
+> 本文件只有 §3 与 §4 值得读；`vendor/`（179k 字符）默认不读。
+
 ## 1. 这个文件夹是什么
 
 热挖掘系统的**核心代码包**（L1–L6）。分层见 `../规划/热点挖掘系统-方案设计.md` §本项目分层。
@@ -11,6 +14,8 @@ tags: [索引]
 ## 2. 当前工作状态
 
 - L1–L6 代码骨架 ✅ 全部完成（纯逻辑已单测，数据/API 相关待跑数验证）
+- L6.5 服务层 ✅ 契约 v1（`hotspot/api/`）：`meta` + `ask` 两个接口，Streamlit 与 HTTP 共用；
+  自检 `scripts/check_api.py` 全绿；编排已从 `ui/app.py` 搬入 `engine.py`
 - 待导师库恢复：`embed → cluster → venue_matrix → cluster_card → eval` 完整跑数
 
 ## 3. 文件清单
@@ -26,7 +31,8 @@ tags: [索引]
 | `hotspot/compress/` | L3 | [[hotspot/compress/_index\|打开]] |
 | `hotspot/retrieval/` | L4 | [[hotspot/retrieval/_index\|打开]] |
 | `hotspot/reasoning/` | L5 | [[hotspot/reasoning/_index\|打开]] |
-| `hotspot/ui/` | L6 | [[hotspot/ui/_index\|打开]] |
+| `hotspot/ui/` | L6（Streamlit 适配） | [[hotspot/ui/_index\|打开]] |
+| `hotspot/api/` | L6.5 服务层（**前端唯一接口面**） | [[hotspot/api/_index\|打开]] |
 
 ## 脚本速查
 
@@ -48,7 +54,7 @@ tags: [索引]
   无写入；模型导出需 G 盘数据一次（`dasc/rlr/export_future_rf.py`）。
   **`arxiv_ranker(cfg)`** 指向周报 RF（R1–R3），供 arXiv 源 rlRAG。
 - `cost.py` —— 成本记账 + 报表：每次问答记 `workspace/ledger/cost.jsonl`，汇总估算 token/¥（harness 卖点）。
-- `schema.py` —— 全链路数据契约（唯一口径，先读它）。
+- `schema.py` —— **内部**全链路数据契约（L1–L5 唯一口径，先读它）；对前端的那份在 `api/contract.py`。
 - `direction.py` —— L1 方向选择器：自由文本 → 子语料（三路召回，0 token）。
 - `llm.py` —— L3 薄包装 dasc LLM 客户端（从 config 构造 Client/Budget）。
 - `config.py` —— 配置加载：从 `config.yaml` 读参数。
