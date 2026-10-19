@@ -4,6 +4,8 @@ tags: [索引]
 
 # hotspot/compress · `_index`（L3 压缩层）
 
+> **给 AI**：只需读 `cluster_card.py`；产物在 `workspace/cards/`（可重建，不读）。
+
 ## 1. 这个文件夹是什么
 
 L3 压缩表示层：每簇一张 `ClusterCard`。**★ 唯一花钱处**（LLM 只命名、抄客观字段、强制溯源）。

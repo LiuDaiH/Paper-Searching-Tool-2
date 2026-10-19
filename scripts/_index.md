@@ -4,6 +4,8 @@ tags: [索引]
 
 # scripts · `_index`
 
+> **给 AI**：按下面「脚本速查」找**单条**，不要通读；常用入口 `run_server.py` / `run_ui.py` / `check_api.py`。
+
 ## 1. 这个文件夹是什么
 
 一次性/验证脚本：接入验证、方向选择验证、索引树自检。
@@ -13,6 +15,7 @@ tags: [索引]
 - D1 接入验证：✅ 通过
 - D2 方向选择验证：✅ 通过
 - 索引树自检（悬空/孤儿/README 覆盖/**脚本速查一致性**）：✅ 全绿
+- 接口自检（`check_api.py`：契约/参数/HTTP/SSE）：✅ 全绿
 
 ## 3. 文件清单
 
@@ -28,6 +31,8 @@ tags: [索引]
   可行 + `subcluster` relation 导入无副作用（数据缺则跳过，非假装绿）。
 - `run_cards.py` —— L3 生成簇卡片（真调 DeepSeek，断点续跑）。
 - `run_ui.py` —— Streamlit UI 入口（`streamlit run scripts/run_ui.py`）。
+- `run_server.py` —— **HTTP 服务入口**（新前端用）：`python scripts/run_server.py --port 8000 --web web`，只暴露 `/api/meta`、`/api/ask`。
+- `check_api.py` —— **接口自检**（离线秒级）：契约往返 + 参数白名单 + HTTP/SSE 冒烟，用 StubEngine 不碰语料。
 - `run_query.py` —— 意图驱动聚类端到端实测（parse_query → 检索聚类 → 命名 → 回答）。
 - `run_deps.py` —— 依赖图续跑抽取 CLI（逐篇落盘被引边，可续跑）。
 - `agg_refs.py` —— 聚合依赖图：`refs/*.json` × `srcmap/*.json` → `workspace/depgraph/paper_refs.json`（paper→被引 arXiv 双向，供 `co_cite`）。

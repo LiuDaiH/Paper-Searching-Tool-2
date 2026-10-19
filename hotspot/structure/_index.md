@@ -4,6 +4,8 @@ tags: [索引]
 
 # hotspot/structure · `_index`（L2 结构层）
 
+> **给 AI**：先读 `venue_matrix.py`（三态判定）→ `embed.py`；`cluster.py` 只在调参/换聚类时读。
+
 ## 1. 这个文件夹是什么
 
 L2 结构层：把 13,119 篇摘要压成「哪些题多大、铺得多开、彼此多近」——**0 token**。

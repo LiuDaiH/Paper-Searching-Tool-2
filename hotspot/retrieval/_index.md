@@ -4,6 +4,8 @@ tags: [索引]
 
 # hotspot/retrieval · `_index`（L4 检索层）
 
+> **给 AI**：先读 `router.py` → `assemble.py`；`bm25.py` / `vector.py` 只在改召回算法时读。
+
 ## 1. 这个文件夹是什么
 
 L4 检索层：**规则兜底 + LLM 增强**路由 + 在线查询改写 + 上下文装配（命中缓存）+ numpy 暴力向量检索。

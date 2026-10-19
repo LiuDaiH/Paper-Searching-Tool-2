@@ -4,6 +4,8 @@ tags: [索引]
 
 # hotspot/reasoning · `_index`（L5 推理层）
 
+> **给 AI**：先读 `answer.py` → `verify.py`；四态定义 grep `schema.py` 的 `class Verdict`，别整篇读 schema。
+
 ## 1. 这个文件夹是什么
 
 L5 推理层：带引用生成答案 + 引用校验（防幻觉最后防线）。
