@@ -116,6 +116,14 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     rows = []
+
+    def write_progress() -> None:
+        """每题写一次，长评测被中断也不丢已完成结果。"""
+        out.write_text(json.dumps(
+            {"group": a.group, "partial": True, "n_done": len(rows), "rows": rows},
+            ensure_ascii=False, indent=2,
+        ), encoding="utf-8")
+
     for item in qs:
         try:
             resp = engine.ask(AskRequest.from_dict({
@@ -144,6 +152,7 @@ def main() -> int:
                    "route": None, "refused": False, "answer": "", "verdicts": [],
                    "metrics": {}}
         rows.append(row)
+        write_progress()
         if row.get("error"):
             print(f"[{a.group}/{item['id']}/{item['type']}] ERROR {row['error'][:120]}")
         else:

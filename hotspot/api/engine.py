@@ -331,6 +331,19 @@ class Engine:
                 % parsed.get("input_class"),
                 meta={"plan": parsed},
             )
+        if parsed.get("input_class") in {"chitchat", "help"} or parsed.get("intent") == "meta":
+            return _Turn(
+                route="local",
+                text=("我是移动云杯的论文热点助手，可以按会议/arXiv 语料检索论文、"
+                      "总结热点、比较方法并给出引用。请直接问一个研究方向。"),
+                meta={"plan": parsed},
+            )
+        if parsed.get("input_class") == "ambiguous":
+            return _Turn(
+                route="refuse", refused=True,
+                refuse_reason="问题范围不够明确，请补充研究方向、时间范围或要比较的对象。",
+                meta={"plan": parsed},
+            )
         emit("retrieve")
         res = subcluster_adaptive(
             parsed, cfg=cfg, corpus=c, index=index, bm25=bm25, scope=req.scope
