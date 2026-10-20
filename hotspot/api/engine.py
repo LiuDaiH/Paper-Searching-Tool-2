@@ -418,7 +418,9 @@ class Engine:
         return _Turn(route="global", text=text, verdicts=verdicts, topics=topics,
                      graph=graph, warnings=warnings,
                      meta={"rlrag_ranked": res.get("rlrag_ranked") or [],
-                           "key_path": res.get("key_path")})
+                           "key_path": res.get("key_path"),
+                           "retrieval": res.get("retrieval") or {},
+                           "retrieval_notes": res.get("retrieval_notes") or []})
 
     def _name_clusters(self, client, clusters, corpus) -> dict[int, tuple[str, str]]:
         """并行给簇命名。单簇失败返回空串，不阻塞整轮。"""
@@ -573,11 +575,24 @@ class Engine:
         else:
             top = int(ret.get("top_k_local") or 8)
             ids = list(pool.paper_ids[:top])
+            hybrid_query = req.question
             if ret_client is not None and ret.get("query_rewrite", True):
                 q = rewrite(req.question, client=ret_client)
                 if q:
-                    # 并集检索：长句/纯中文问题的唯一活路（见 _search_union docstring）
-                    ids = self._search_union(c, q, top) or ids
+                    hybrid_query = q
+            try:
+                from ..retrieval.hybrid import retrieve as hybrid_retrieve  # noqa: PLC0415
+
+                hr = hybrid_retrieve(
+                    c, hybrid_query, cfg=cfg,
+                    bm25=self._bm25_index(req.source, c, cfg),
+                    index=self._vector_index(req.source, cfg),
+                    top_k=top,
+                )
+                ids = [h.paper_id for h in hr.hits] or ids
+                warnings.extend(hr.notes)
+            except Exception as exc:  # noqa: BLE001 —— hybrid 失败保留池顺序
+                warnings.append(f"混合检索降级：{type(exc).__name__}: {exc}")
             body, evidence = self._local_body(c, ids)
             allowed = frozenset(evidence) | self._card_ids(cfg)
 

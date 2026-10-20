@@ -235,6 +235,19 @@ def check_search_semantics() -> None:
     check("空查询不炸", Engine._search_union(c, "", 8) == [])
 
 
+def check_hybrid() -> None:
+    """混合检索的纯函数部分：RRF 必须把双通道共同命中排在前面。"""
+    from hotspot.retrieval.hybrid import rrf_fuse
+
+    print("[2b] hybrid RRF")
+    fused = rrf_fuse({
+        "bm25": [("a", 10.0), ("b", 9.0)],
+        "vector": [("b", 0.8), ("c", 0.7)],
+    })
+    check("RRF 双通道优先", max(fused, key=fused.get) == "b", str(fused))
+    check("RRF 保留单通道候选", {"a", "b", "c"} <= set(fused), str(fused))
+
+
 # ══════════════════════════════════════════════════════════════════════
 # 4) 真引擎的 meta 也不该崩（数据缺失 → 降级 + warning）
 # ══════════════════════════════════════════════════════════════════════
@@ -256,6 +269,8 @@ def main() -> int:
     check_contract()
     print()
     check_search_semantics()
+    print()
+    check_hybrid()
     print()
     check_engine_meta()
     print()

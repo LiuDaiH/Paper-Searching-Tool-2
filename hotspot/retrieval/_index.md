@@ -15,6 +15,7 @@ L4 检索层：**规则兜底 + LLM 增强**路由 + 在线查询改写 + 上下
 
 - `router.py` ✅ 规则兜底单测全绿；`llm_route` 失败退 `LOCAL`
 - `rewrite.py` / `assemble.py` / `vector.py` ✅ 导入通过
+- `hybrid.py` ✅ P1-1：BM25 × dense → RRF → 可选 cross-encoder → MMR；默认无模型可跑
 - 完整在线检索 ⏸ 待向量/卡片数据 + `DEEPSEEK_API_KEY`
 
 ## 3. 文件清单
@@ -29,6 +30,7 @@ L4 检索层：**规则兜底 + LLM 增强**路由 + 在线查询改写 + 上下
 - `rewrite.py` —— L4 在线查询改写：口语问题→检索查询，提升召回，失败退原文。
 - `assemble.py` —— L4 装配上下文：固定前缀命中 DeepSeek 缓存，引用规范写死。
 - `vector.py` —— L4 numpy 暴力余弦检索（不引向量库）。
+- `hybrid.py` —— L4 混合检索：BM25 + dense 的 RRF 融合、可选 cross-encoder rerank、MMR 多样性；失败回退 RRF。
 
 （`__init__.py` 是包脚手架，不单独登记。）
 

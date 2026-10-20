@@ -71,6 +71,16 @@ retrieval:
   top_k_vector: 50              # 向量召回候选数（作为 FTS5 的补充路）
   min_vector_score: 0.60        # 仅向量路时（无 BM25/标签命中）的最低余弦阈值
   top_query_direct: 8           # 关键词直投：BM25 直接命中的篇数（无条件进上下文，救稀疏主题）
+  # P1-1 混合检索：BM25 × dense → RRF → 可选 cross-encoder → MMR
+  hybrid_bm25_k: 300
+  hybrid_vector_k: 100
+  hybrid_top_k: 300
+  rrf_k: 60
+  vector_weight: 1.0
+  rerank_top_n: 0              # >0 且 rerank_model 有效时才启用 cross-encoder
+  rerank_model: ""             # 例：BAAI/bge-reranker-base（需本地可用）
+  mmr_enabled: true
+  mmr_lambda: 0.75
   followup_rounds: 3            # 追问模式读取最近几轮对话
   llm_router: true              # 在线路由用 LLM 增强（关键词命中/REFUSE 仍规则优先，失败退 LOCAL）
   query_rewrite: true           # 在线检索前用 LLM 做查询改写（提升召回，失败退原文）

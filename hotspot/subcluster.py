@@ -16,8 +16,6 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-import numpy as np
-
 from .config import load_config, paths_from
 from .corpus import open_corpus, arXivCorpus
 from .structure.embed import embed_query
@@ -152,54 +150,39 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
         name = "bm25_cache_arxiv.pkl" if isinstance(c, arXivCorpus) else "bm25_cache.pkl"
         bm, bm_ids = build_or_load(c, paths_from(cfg)["workspace"] / name)
 
-    def _bm_hits(ks):
-        s = set()
-        for w in ks:
-            if w.strip():
-                s.update(pid for pid in bm_search(bm, bm_ids, w, k=300) if pid in row)
-        return s
-
-    # relation（两主题）：关键词切两组，**取并集**检索（交集论文过少、不可用）；
-    # 「共同来源」的精准实现需引用层（共同被引 arXiv，依赖 paper↔src 映射，后续），
-    # 此处先保证两主题子集都有内容、由 LLM 综合二者关联。
-    if parsed["intent"] == "relation" and len(kw) >= 2:
-        mid = max(1, len(kw) // 2)
-        gA = _bm_hits(kw[:mid])
-        gB = _bm_hits(kw[mid:])
-        rel = gA | gB
-    else:
-        rel = _bm_hits(kw)
-        # 向量混合（词 × 义）：query 语义 top-k 并入（MARL 等书写差异由语义召回兜底）。
-        try:
-            qtxt = parsed["topic_en"] or " ".join(kw)
-            if qtxt.strip():
-                qv = embed_query(
-                    qtxt,
-                    model=str((cfg.get("embed") or {}).get("model") or "BAAI/bge-m3"),
-                )
-                Xn = X_all / np.maximum(np.linalg.norm(X_all, axis=1, keepdims=True), 1e-12)
-                scores = Xn @ qv
-                for idx in np.argsort(-scores)[:300]:
-                    if scores[idx] > 0.0:
-                        rel.add(ids_all[idx])
-        except Exception:  # noqa: BLE001 —— 向量混合失败不阻塞
-            pass
-    # ── query 直投：BM25 直接命中关键词的论文（按相关度 top-N）──────────────
-    #   无条件进 body（不依赖聚类簇覆盖）—— 救活稀疏主题（Dreamer/RLOO）
-    #   局部题被分到大簇/噪声簇而淹没、导致模型误拒答的问题。
     qhpick = int((cfg.get("retrieval") or {}).get("top_query_direct") or 8)
-    qscores: dict[str, float] = {}
-    for w in kw:
-        if not w.strip():
-            continue
-        for i, sc in bm.search(w, k=200):
-            pid = bm_ids[i]
-            if pid in row and sc > 0:
-                qscores[pid] = max(qscores.get(pid, 0.0), float(sc))
-    query_hits = (sorted(qscores, key=lambda p: -qscores[p])[:qhpick]
-                  if qscores else [])
+    rel: set[str] = set()
+    query_hits: list[str] = []
+    retrieval_stats: dict = {}
+    retrieval_notes: list[str] = []
+    try:
+        from .retrieval.hybrid import retrieve as hybrid_retrieve  # noqa: PLC0415
+
+        hr = hybrid_retrieve(
+            c,
+            parsed["topic_en"] or " ".join(kw),
+            cfg=cfg,
+            keywords=kw,
+            bm25=(bm, bm_ids),
+            index=(X_all, ids_all),
+            top_k=int((cfg.get("retrieval") or {}).get("hybrid_top_k") or 300),
+        )
+        rel = {h.paper_id for h in hr.hits if h.paper_id in row}
+        query_hits = [h.paper_id for h in hr.hits[:qhpick]]
+        retrieval_stats = hr.stats
+        retrieval_notes = list(hr.notes)
+    except Exception as exc:  # noqa: BLE001 —— hybrid 失败退回 BM25
+        retrieval_notes.append(
+            f"hybrid 检索失败，退回 BM25：{type(exc).__name__}: {exc}"
+        )
+        for w in kw:
+            if w.strip():
+                rel.update(pid for pid in bm_search(bm, bm_ids, w, k=300) if pid in row)
+        query_hits = sorted(rel)[:qhpick]
     if not rel:
-        return {"n_papers": 0, "n_clusters": 0, "clusters": [], "intent": parsed["intent"]}
+        return {"n_papers": 0, "n_clusters": 0, "clusters": [],
+                "intent": parsed["intent"], "retrieval": retrieval_stats,
+                "retrieval_notes": retrieval_notes}
     rel = sorted(rel, key=lambda pid: row[pid])   # 按向量索引序稳定排序
 
     # 标签筛选（year）—— 单独筛，不入聚类
@@ -258,7 +241,9 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
 
     result = {"n_papers": len(rel), "n_clusters": len(out), "clusters": out,
               "cluster_cfg": cc, "intent": parsed["intent"],
-              "query_hits": list(query_hits)}
+              "query_hits": list(query_hits),
+              "retrieval": retrieval_stats,
+              "retrieval_notes": retrieval_notes}
 
     # rlRAG 附加：候选按 RF 未来被引概率排序（供 UI/评测展示）
     if rlrag_error:

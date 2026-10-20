@@ -18,6 +18,8 @@ tags: [索引]
   自检 `scripts/check_api.py` 全绿；编排已从 `ui/app.py` 搬入 `engine.py`
 - P0（2026-10-20）✅ 查询/向量/BM25/RF 缓存、`direction` 向量召回与阈值、
   `usage.stages` start/end、批量引用校验；样例真实请求约 34s
+- P1-1（2026-10-20）✅ `retrieval/hybrid.py`：BM25 + dense → RRF → 可选
+  cross-encoder → MMR；已接入 subcluster 与 LOCAL 路径
 - 待导师库恢复：`embed → cluster → venue_matrix → cluster_card → eval` 完整跑数
 
 ## 3. 文件清单
