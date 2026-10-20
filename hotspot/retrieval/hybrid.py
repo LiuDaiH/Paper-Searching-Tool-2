@@ -31,7 +31,7 @@ _STOP = {
     "challenge", "challenges", "application", "applications", "direction",
     "directions", "area", "areas", "current", "recently", "new", "trending",
     "popular", "large", "two", "three", "few", "many", "year", "years",
-    "time", "times",
+    "time", "times", "construction", "building", "development", "developing",
 }
 
 
