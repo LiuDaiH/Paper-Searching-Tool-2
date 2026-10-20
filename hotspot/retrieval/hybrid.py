@@ -29,7 +29,7 @@ _STOP = {
     "hotspot", "hotspots", "topic", "topics", "trend", "trends",
     "research", "researches", "overview", "advance", "advances", "progress",
     "challenge", "challenges", "application", "applications", "direction",
-    "directions", "area", "areas", "current", "recently", "new",
+    "directions", "area", "areas", "current", "recently", "new", "trending",
     "popular", "large", "two", "three", "few", "many", "year", "years",
     "time", "times",
 }
@@ -87,7 +87,7 @@ def query_coverage(
     terms: set[str] = set()
     for text in [query, *keywords]:
         for w in _WORD.findall((text or "").lower()):
-            if len(w) > 2 and w not in _STOP:
+            if len(w) > 2 and not w.isdigit() and w not in _STOP:
                 terms.add(w)
     if not terms:
         return 1.0, False, set(), 0
