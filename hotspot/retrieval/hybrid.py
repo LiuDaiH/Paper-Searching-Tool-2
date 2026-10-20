@@ -26,6 +26,10 @@ _STOP = {
     "which", "how", "why", "are", "is", "of", "to", "in", "on", "a", "an",
     "most", "hot", "latest", "recent", "paper", "papers", "method", "methods",
     "approach", "approaches", "system", "systems", "study", "works",
+    "hotspot", "hotspots", "topic", "topics", "trend", "trends",
+    "research", "researches", "overview", "advance", "advances", "progress",
+    "challenge", "challenges", "application", "applications", "direction",
+    "directions", "area", "areas", "current", "recently", "new",
 }
 
 
@@ -264,8 +268,10 @@ def retrieve(
     ]
     hits.sort(key=lambda h: h.score, reverse=True)
 
+    # 覆盖率只看原始 topic（query），不看 LLM 产出的同义扩展词；
+    # 扩展词用于召回，不能让“offline-to-online”这类变体把门控压低。
     coverage, rare_uncovered, rare_terms, n_terms = query_coverage(
-        query, keywords, hits, corpus=corpus,
+        query, [], hits, corpus=corpus,
         top_n=int(ret.get("coverage_top_n") or 10),
         df=getattr(bm, "df", None),
     )
