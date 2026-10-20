@@ -252,6 +252,44 @@ def check_hybrid() -> None:
     check("RRF 保留单通道候选", {"a", "b", "c"} <= set(fused), str(fused))
 
 
+def check_evidence() -> None:
+    """core_concepts + anchors + evidence 的最小行为测试。"""
+    from types import SimpleNamespace
+    from hotspot.reasoning.evidence import evaluate
+
+    print("[2c] evidence sufficiency")
+
+    class Corpus:
+        def get(self, pid):
+            data = {
+                "p1": "RLOO improves REINFORCE leave-one-out baseline variance reduction",
+                "p2": "Quantum algorithms for computing equilibria",
+            }
+            return SimpleNamespace(title=data.get(pid, ""), abstract="")
+
+    hits = [SimpleNamespace(paper_id="p1"), SimpleNamespace(paper_id="p2")]
+    plan = {
+        "intent": "fact",
+        "core_concepts": [{
+            "name": "RLOO", "aliases": ["RLOO"], "required": True,
+        }],
+        "anchors": ["RLOO"],
+    }
+    check("anchor 命中可回答",
+          evaluate(Corpus(), hits, plan).decision == "answer")
+
+    plan2 = {
+        "intent": "fact",
+        "core_concepts": [
+            {"name": "quantum computing", "aliases": ["quantum"], "required": True},
+            {"name": "Schrodinger cat", "aliases": ["cat"], "required": True},
+        ],
+        "anchors": ["cat"],
+    }
+    check("缺 anchor 不冒充回答",
+          evaluate(Corpus(), hits, plan2).decision == "insufficient_evidence")
+
+
 # ══════════════════════════════════════════════════════════════════════
 # 4) 真引擎的 meta 也不该崩（数据缺失 → 降级 + warning）
 # ══════════════════════════════════════════════════════════════════════
@@ -275,6 +313,8 @@ def main() -> int:
     check_search_semantics()
     print()
     check_hybrid()
+    print()
+    check_evidence()
     print()
     check_engine_meta()
     print()

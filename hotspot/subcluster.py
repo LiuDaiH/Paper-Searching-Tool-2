@@ -63,6 +63,20 @@ PARSE_SCHEMA = {
     "properties": {
         "topic_en": {"type": "string"},
         "core_terms": {"type": "array", "items": {"type": "string"}},
+        "core_concepts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "aliases": {"type": "array", "items": {"type": "string"}},
+                    "required": {"type": "boolean"},
+                    "weight": {"type": "number"},
+                },
+                "required": ["name", "aliases", "required"],
+            },
+        },
+        "anchors": {"type": "array", "items": {"type": "string"}},
         "years": {"type": "array", "items": {"type": "integer"}},
         "intent": {"type": "string"},
         "input_class": {"type": "string"},
@@ -89,6 +103,9 @@ def parse_query(question: str, client, *, cfg=None) -> dict:
         "你是查询规划器。把用户问题解析成**单轮检索规划**，只输出 JSON：\n"
         "topic_en(英文主题短语，1 句)、\n"
         "core_terms(2-6 个回答必须围绕的核心主题词；去掉年份、近两年、热门、方法、研究等泛化词)、\n"
+        "core_concepts(对象数组；每个概念 {name, aliases, required, weight}；"
+        "同义词/缩写放 aliases，不要拆成多个概念；required=true 表示回答必须命中)、\n"
+        "anchors(必须精确命中的实体/缩写，如 RLOO、DPO；没有则 []),\n"
         "keywords(4-8 个**英文检索词**，覆盖同一概念的缩写/变体/同义；例如用户说'多智能体'应产出 "
         "['multi-agent','multiagent','MARL','multi-agent systems','multi-agent reinforcement learning',"
         "'agent collaboration','cooperative agents']——**同义/变体覆盖越全，检索召回越宽**；"
@@ -119,11 +136,55 @@ def parse_query(question: str, client, *, cfg=None) -> dict:
     # 这时回退到 topic_en，让 coverage 用主题词而不是扩展词清单。
     if len(core_terms) > 3:
         core_terms = []
+    elif core_terms:
+        # core term 至少要和 topic_en 有一个非停用词交集；否则它是召回扩展词。
+        from .retrieval.hybrid import _STOP, _WORD  # noqa: PLC0415
+
+        topic_tokens = {
+            w for w in _WORD.findall(str(d.get("topic_en") or "").lower())
+            if len(w) > 2 and not w.isdigit() and w not in _STOP
+        }
+        core_terms = [
+            term for term in core_terms
+            if any(
+                w in topic_tokens
+                for w in _WORD.findall(term.lower())
+                if len(w) > 2 and not w.isdigit() and w not in _STOP
+            )
+        ]
+    raw_concepts = d.get("core_concepts") or []
+    core_concepts = []
+    for item in raw_concepts:
+        if isinstance(item, str):
+            item = {"name": item, "aliases": [item], "required": False}
+        if not isinstance(item, dict) or not str(item.get("name") or "").strip():
+            continue
+        aliases = [str(a) for a in (item.get("aliases") or [item["name"]]) if str(a).strip()]
+        if not aliases:
+            aliases = [str(item["name"])]
+        core_concepts.append({
+            "name": str(item["name"]).strip(),
+            "aliases": aliases,
+            "required": bool(item.get("required", False)),
+            "weight": float(item.get("weight") or 1.0),
+        })
+    if len(core_concepts) > 5:
+        core_concepts = []
+    if not core_concepts:
+        core_concepts = [{
+            "name": str(d.get("topic_en") or (core_terms[0] if core_terms else "")),
+            "aliases": [str(d.get("topic_en") or (core_terms[0] if core_terms else ""))],
+            "required": False,
+            "weight": 1.0,
+        }]
+    anchors = [str(a) for a in (d.get("anchors") or []) if str(a).strip()]
     if not core_terms:
         core_terms = ([str(d.get("topic_en"))] if d.get("topic_en") else keywords[:3])
     return {
         "topic_en": str(d.get("topic_en") or ""),
         "core_terms": core_terms[:8],
+        "core_concepts": core_concepts[:5],
+        "anchors": anchors[:5],
         "years": years,
         "intent": intent,
         "input_class": input_class,
@@ -194,12 +255,49 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
             bm25=(bm, bm_ids),
             index=(X_all, ids_all),
             top_k=int((cfg.get("retrieval") or {}).get("hybrid_top_k") or 300),
+            min_coverage=(
+                float((cfg.get("retrieval") or {}).get("min_query_coverage_trend") or 0.45)
+                if parsed.get("intent") in ("trend", "worth", "newfield")
+                else float((cfg.get("retrieval") or {}).get("min_query_coverage") or 0.80)
+            ),
         )
         rel = {h.paper_id for h in hr.hits if h.paper_id in row}
-        query_hits = [h.paper_id for h in hr.hits[:qhpick]]
+        # 保留 BM25 的稀有词直投；hybrid top-k 可能把 RLOO 这类低频词排到后面。
+        direct_scores: dict[str, float] = {}
+        for w in kw:
+            if not w.strip():
+                continue
+            for i, sc in bm.search(w, k=200):
+                pid = bm_ids[i]
+                if pid in row and sc > 0:
+                    direct_scores[pid] = max(direct_scores.get(pid, 0.0), float(sc))
+        direct_hits = sorted(direct_scores, key=lambda p: -direct_scores[p])
+        rel.update(direct_hits)
+        query_hits = list(dict.fromkeys(
+            direct_hits[:qhpick] + [h.paper_id for h in hr.hits[:qhpick]]
+        ))[:qhpick]
         retrieval_stats = hr.stats
         retrieval_notes = list(hr.notes)
-        if not retrieval_stats.get("answerable", True):
+        from .reasoning.evidence import evaluate as evaluate_evidence  # noqa: PLC0415
+
+        evidence = evaluate_evidence(
+            c, hr.evidence_hits or hr.hits, parsed
+        )
+        retrieval_stats["evidence"] = evidence.to_dict()
+        structured_gate = bool(parsed.get("core_concepts") or parsed.get("anchors"))
+        if structured_gate and evidence.decision != "answer":
+            return {
+                "n_papers": 0, "n_clusters": 0, "clusters": [],
+                "intent": parsed["intent"], "refused": True,
+                "refuse_reason": (
+                    f"证据不足（{evidence.decision}）：{evidence.reason}"
+                ),
+                "decision": evidence.decision,
+                "evidence": evidence.to_dict(),
+                "retrieval": retrieval_stats,
+                "retrieval_notes": retrieval_notes,
+            }
+        if not structured_gate and not retrieval_stats.get("answerable", True):
             return {
                 "n_papers": 0, "n_clusters": 0, "clusters": [],
                 "intent": parsed["intent"], "refused": True,

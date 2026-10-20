@@ -106,6 +106,10 @@ def main() -> int:
     ap.add_argument("--group", choices=sorted(GROUPS), default="g0")
     ap.add_argument("--live", action="store_true", default=False,
                     help="真调 LLM（默认 dry-run 只跑流程）")
+    ap.add_argument("--resume", action="store_true",
+                    help="读取 --out 中已有的 partial rows，跳过已完成题")
+    ap.add_argument("--resume-from", default=None,
+                    help="配合 --resume；从该题 id 开始重跑，丢弃它及之后的旧结果")
     a = ap.parse_args()
 
     ec, gflags = _eval_cfg(a.group)
@@ -115,7 +119,20 @@ def main() -> int:
     out = Path(a.out) if a.out else ws / "ledger" / f"eval_{a.group}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = []
+    rows: list[dict] = []
+    if a.resume and out.exists():
+        try:
+            old = json.loads(out.read_text(encoding="utf-8"))
+            rows = list(old.get("rows") or [])
+            if a.resume_from:
+                ids = [str(r.get("id") or "") for r in rows]
+                if a.resume_from in ids:
+                    rows = rows[:ids.index(a.resume_from)]
+            print(f"[resume] 已有 {len(rows)} 题，从 {a.resume_from or '未完成部分'} 继续")
+        except Exception as e:  # noqa: BLE001
+            print(f"[resume] 读取失败，重新开始：{type(e).__name__}: {e}")
+            rows = []
+    completed = {str(r.get("id") or "") for r in rows}
 
     def write_progress() -> None:
         """每题写一次，长评测被中断也不丢已完成结果。"""
@@ -125,6 +142,8 @@ def main() -> int:
         ), encoding="utf-8")
 
     for item in qs:
+        if str(item.get("id") or "") in completed:
+            continue
         try:
             resp = engine.ask(AskRequest.from_dict({
                 "question": item["question"],

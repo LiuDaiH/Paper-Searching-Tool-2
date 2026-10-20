@@ -79,6 +79,7 @@ retrieval:
   vector_weight: 0.5
   coverage_top_n: 10
   min_query_coverage: 0.80   # top 候选对问题内容词的覆盖率；低于此值拒答
+  min_query_coverage_trend: 0.45  # trend/worth/newfield 的较宽松门控
   rerank_top_n: 0              # >0 且 rerank_model 有效时才启用 cross-encoder
   rerank_model: ""             # 例：BAAI/bge-reranker-base（需本地可用）
   mmr_enabled: true

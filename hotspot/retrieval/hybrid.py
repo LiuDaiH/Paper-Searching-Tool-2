@@ -32,6 +32,8 @@ _STOP = {
     "directions", "area", "areas", "current", "recently", "new", "trending",
     "popular", "large", "two", "three", "few", "many", "year", "years",
     "time", "times", "construction", "building", "development", "developing",
+    "core", "innovation", "innovations", "main", "idea", "ideas",
+    "difference", "differences",
 }
 
 
@@ -49,6 +51,7 @@ class HybridHit:
 @dataclass
 class HybridResult:
     hits: list[HybridHit] = field(default_factory=list)
+    evidence_hits: list[HybridHit] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     stats: dict = field(default_factory=dict)
 
@@ -225,6 +228,7 @@ def retrieve(
     bm25=None,
     index=None,
     top_k: int = 300,
+    min_coverage: Optional[float] = None,
 ) -> HybridResult:
     """执行 BM25 + dense + RRF + 可选 rerank/MMR。"""
     cfg = cfg or load_config()
@@ -298,16 +302,32 @@ def retrieve(
 
     # 覆盖率只看原始 topic（query），不看 LLM 产出的同义扩展词；
     # 扩展词用于召回，不能让“offline-to-online”这类变体把门控压低。
+    coverage_top_n = int(ret.get("coverage_top_n") or 10)
+    direct_rows: list[tuple[str, float]] = []
+    for keyword in keywords:
+        if not keyword.strip():
+            continue
+        for i, score in bm.search(keyword, k=coverage_top_n):
+            pid = bm_ids[i]
+            direct_rows.append((pid, float(score)))
+    coverage_hits = [
+        HybridHit(paper_id=pid, score=float(score), bm25_score=float(score))
+        for pid, score in (direct_rows[:coverage_top_n * 2] + bm_rows[:coverage_top_n])
+    ] + list(hits[:coverage_top_n])
     coverage_text = " ".join(core_terms) if core_terms else query
     coverage, rare_uncovered, rare_terms, n_terms = query_coverage(
-        coverage_text, [], hits, corpus=corpus,
-        top_n=int(ret.get("coverage_top_n") or 10),
+        coverage_text, [], coverage_hits, corpus=corpus,
+        top_n=coverage_top_n * 2,
         df=getattr(bm, "df", None),
     )
-    min_coverage = float(ret.get("min_query_coverage") or 0.80)
+    min_coverage = (
+        float(min_coverage)
+        if min_coverage is not None
+        else float(ret.get("min_query_coverage") or 0.80)
+    )
     answerable = bool(hits) and (
         coverage >= min_coverage
-        or (n_terms <= 2 and not rare_uncovered)
+        or (n_terms <= 2 and coverage > 0.0 and not rare_uncovered)
     )
 
     rerank_top = int(ret.get("rerank_top_n") or 0)
@@ -332,6 +352,7 @@ def retrieve(
 
     return HybridResult(
         hits=hits[:top_k],
+        evidence_hits=coverage_hits[: max(top_k, len(coverage_hits))],
         notes=notes,
         stats={
             "bm25_candidates": len(bm_rows),
@@ -343,6 +364,7 @@ def retrieve(
             "scope_filtered": scope_filtered,
             "query_coverage": round(coverage, 4),
             "n_terms": n_terms,
+            "min_coverage": min_coverage,
             "rare_terms": sorted(rare_terms),
             "rare_uncovered": rare_uncovered,
             "answerable": answerable,

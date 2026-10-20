@@ -355,7 +355,9 @@ class Engine:
                 warnings=list(res.get("retrieval_notes") or []),
                 meta={"retrieval": res.get("retrieval") or {},
                       "retrieval_notes": res.get("retrieval_notes") or [],
-                      "plan": parsed},
+                      "plan": parsed,
+                      "decision": res.get("decision") or "refused",
+                      "evidence": res.get("evidence") or {}},
             )
         max_topics = int((cfg.get("api") or {}).get("max_topics") or 6)
         clusters = (res.get("clusters") or [])[:max_topics]
@@ -455,7 +457,9 @@ class Engine:
                            "key_path": res.get("key_path"),
                            "retrieval": res.get("retrieval") or {},
                            "retrieval_notes": res.get("retrieval_notes") or [],
-                           "plan": parsed})
+                           "plan": parsed,
+                           "decision": "answer",
+                           "evidence": (res.get("retrieval") or {}).get("evidence") or {}})
 
     def _name_clusters(self, client, clusters, corpus) -> dict[int, tuple[str, str]]:
         """并行给簇命名。单簇失败返回空串，不阻塞整轮。"""

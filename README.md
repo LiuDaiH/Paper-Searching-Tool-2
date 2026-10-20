@@ -21,7 +21,7 @@ tags: [索引, 说明书]
 ## 2. 直辖文件夹
 
 - **`日志/`**：研究日志（**流水账**）——**没有子 README，由本文件直接管辖**。格式见 `.zhanlu/skill/research-log`。各篇：
-  - `2026-10-20-P0算法性能改造.md` —— 评测迁移到 `Engine.ask`、分段 start/end、向量/BM25/RF/查询缓存、向量召回阈值、批量引用校验；样例真实请求 302s → 34s；追加 P1-1 hybrid（BM25+dense+RRF+可选 rerank+MMR）与 QueryPlan v0.5（core_terms/scope）
+  - `2026-10-20-P0算法性能改造.md` —— 评测迁移到 `Engine.ask`、分段 start/end、向量/BM25/RF/查询缓存、向量召回阈值、批量引用校验；样例真实请求 302s → 34s；追加 P1-1 hybrid（BM25+dense+RRF+可选 rerank+MMR）、QueryPlan v0.5（core_terms/scope）与 evidence（core_concepts/anchors）
   - `2026-10-19-样例数据集接口复测.md` —— 样例 1,200+600 与全量 G（22,747+5,173）两轮接口复测：离线 32 项全绿、HTTP/SSE、Streamlit、真实 `POST /api/ask`（topics↔[C:x] 对齐）与追问；全量 live 352.5s、3 条引用全 supported；修 `api_key_env` 与 `HOTSPOT_CONFIG`
   - `2026-10-18-前后端解耦·接口收口.md` —— 接口层地基：11 模块/19 符号 → 2 个接口；编排搬进 `hotspot/api/engine.py`；HTTP（含 SSE）+ 参考前端；顺手修掉 `_maybe_keypath` 相对导入 bug
   - `2026-10-06-B档发布与修复.md` —— B 档交付（G:\work! 三件套）、MPS 卡死根治、评测修复与专项指标、corpus 相对路径解析
@@ -72,7 +72,7 @@ tags: [索引, 说明书]
 | `hotspot/structure/` | embed / cluster / venue_matrix |
 | `hotspot/compress/` | cluster_card |
 | `hotspot/retrieval/` | router / rewrite / assemble / vector / hybrid |
-| `hotspot/reasoning/` | answer / verify |
+| `hotspot/reasoning/` | answer / verify / evidence |
 | `hotspot/api/` | contract / engine / http（**前端唯一接口面**） |
 | `hotspot/ui/` | app / store |
 | `scripts/` | check_access / check_direction / check_tree / check_api / run_server |
