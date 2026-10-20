@@ -289,6 +289,13 @@ def check_evidence() -> None:
     check("缺 anchor 不冒充回答",
           evaluate(Corpus(), hits, plan2).decision == "insufficient_evidence")
 
+    from hotspot.api.engine import Engine
+    cfg = {"api": {"min_answer_chars": 20}}
+    check("空/超短答案无效", not Engine._answer_is_valid("太短", cfg))
+    check("无引用答案无效", not Engine._answer_is_valid("这是一段足够长但没有引用的答案文本", cfg))
+    check("有引用答案有效",
+          Engine._answer_is_valid("这是一段足够长并且引用了论文的答案文本 [P:p1]", cfg))
+
 
 # ══════════════════════════════════════════════════════════════════════
 # 4) 真引擎的 meta 也不该崩（数据缺失 → 降级 + warning）

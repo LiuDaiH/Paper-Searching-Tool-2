@@ -45,6 +45,7 @@ class EvidenceResult:
     snippets: tuple[str, ...] = ()
     best_concept_coverage: float = 0.0
     score: float = 0.0
+    evidence_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +56,7 @@ class EvidenceResult:
             "snippets": list(self.snippets),
             "best_concept_coverage": self.best_concept_coverage,
             "score": self.score,
+            "evidence_id": self.evidence_id,
         }
 
 
@@ -121,6 +123,7 @@ def evaluate(
 
     candidates.sort(key=lambda x: (x["score"], x["coverage"]), reverse=True)
     best = candidates[0]
+    best_id = str(best["paper_id"])
     matched_union = set().union(*(set(c["matched"]) for c in candidates))
     anchors_union = set().union(*(set(c["matched_anchors"]) for c in candidates))
     required = {str(c["name"]) for c in concepts if c.get("required")}
@@ -134,6 +137,7 @@ def evaluate(
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
+            evidence_id=best_id,
         )
     # An explicit anchor is the hard entity constraint. Without an anchor,
     # required concepts remain mandatory.
@@ -144,6 +148,7 @@ def evaluate(
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
+            evidence_id=best_id,
         )
     if intent in {"fact", "compare"} and not anchors and best["coverage"] < 0.5:
         return EvidenceResult(
@@ -152,6 +157,7 @@ def evaluate(
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
+            evidence_id=best_id,
         )
     if intent == "compare" and len(concepts) >= 2 and best["coverage"] < 1.0:
         return EvidenceResult(
@@ -160,15 +166,18 @@ def evaluate(
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
+            evidence_id=best_id,
         )
     if not snippet_ok:
         return EvidenceResult(
             "insufficient_evidence", "候选摘要没有可用证据片段",
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (), best["coverage"], best["score"],
+            evidence_id=best_id,
         )
     return EvidenceResult(
         "answer", "概念/锚点与摘要证据满足",
         tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
         (best["snippet"],), best["coverage"], best["score"],
+        evidence_id=best_id,
     )

@@ -95,6 +95,7 @@ api:
   max_topics: 6                 # 回答里最多命名/展示几个主题簇
   max_evidence: 8               # 进上下文的证据论文条数
   evidence_chars: 300           # 每篇证据摘要保留多少字符
+  min_answer_chars: 20          # evidence=answer 后，答案至少包含的字符数
   followup_papers: 4            # 追问时把前文引用过的几篇论文并进上下文（0=不带）
 
 spread:

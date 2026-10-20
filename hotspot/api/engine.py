@@ -435,15 +435,30 @@ class Engine:
 
         emit("answer")
         text = generate_answer(ctx, cfg=cfg, client=client)
-        if not text.strip():
-            warnings.append("LLM 未返回内容（检查 key / 端点 / 模型名）")
+        if not self._answer_is_valid(text, cfg):
+            warnings.append("首次回答为空/超短/无引用，已重试一次")
+            text = generate_answer(ctx, cfg=cfg, client=client)
+        fallback_used = False
+        if not self._answer_is_valid(text, cfg):
+            text = self._fallback_answer(req.question, res, c)
+            fallback_used = bool(text)
+            if fallback_used:
+                warnings.append("LLM 生成失败，已用检索证据生成降级答案")
+        if not self._answer_is_valid(text, cfg):
+            return _Turn(
+                route="error",
+                text="",
+                warnings=warnings + ["回答重试后仍为空/超短/无引用"],
+                meta={"plan": parsed,
+                      "evidence": (res.get("retrieval") or {}).get("evidence") or {}},
+            )
         self._warn_if_truncated(cfg, body, req.question, warnings)
 
-        claims = verify.parse_claims(text)
+        claims = [] if fallback_used else verify.parse_claims(text)
         evidence = self._intent_evidence(c, clusters, res.get("query_hits") or [],
                                          cards, topics, claims)
         emit("verify")
-        verdicts = [
+        verdicts = [] if fallback_used else [
             Verdict(status=v.status, text=v.claim.text[:240], detail=v.detail)
             for v in verify.verify_claims(
                 claims, allowed_ids=ctx.allowed_ids, evidence_lookup=evidence,
@@ -460,6 +475,33 @@ class Engine:
                            "plan": parsed,
                            "decision": "answer",
                            "evidence": (res.get("retrieval") or {}).get("evidence") or {}})
+
+    @staticmethod
+    def _fallback_answer(question: str, res: dict, corpus) -> str:
+        """LLM 生成失败时，用检索证据构造一个可引用的最小答案。"""
+        evidence = (res.get("retrieval") or {}).get("evidence") or {}
+        snippets = list(evidence.get("snippets") or [])
+        ids = [str(evidence.get("evidence_id") or "")] if evidence.get("evidence_id") else []
+        ids += list(res.get("query_hits") or [])
+        if not ids:
+            ids = [
+                str(pid)
+                for cl in (res.get("clusters") or [])
+                for pid in (cl.get("members") or [])[:1]
+            ]
+        for pid in ids:
+            p = corpus.get(pid)
+            if p is None:
+                continue
+            snippet = (snippets[0] if snippets else (p.abstract or ""))[:300]
+            title = p.title or pid
+            text = (
+                f"本库中与「{question}」最直接相关的证据来自《{title}》："
+                f"{snippet} [P:{pid}]"
+            )
+            if len(text.strip()) >= 20:
+                return text
+        return ""
 
     def _name_clusters(self, client, clusters, corpus) -> dict[int, tuple[str, str]]:
         """并行给簇命名。单簇失败返回空串，不阻塞整轮。"""
@@ -661,8 +703,14 @@ class Engine:
         ctx = assemble(r, body=body, question=req.question, allowed_ids=allowed)
         emit("answer")
         text = generate_answer(ctx, cfg=cfg, dry_run=dry, client=client)
-        if not text.strip():
-            warnings.append("LLM 未返回内容（检查 key / 端点 / 模型名）")
+        if not dry and not self._answer_is_valid(text, cfg):
+            warnings.append("首次回答为空/超短/无引用，已重试一次")
+            text = generate_answer(ctx, cfg=cfg, dry_run=dry, client=client)
+        if not dry and not self._answer_is_valid(text, cfg):
+            return _Turn(
+                route="error", text="",
+                warnings=warnings + ["回答重试后仍为空/超短/无引用"],
+            )
         self._warn_if_truncated(cfg, body, req.question, warnings)
 
         claims = verify.parse_claims(text)
@@ -961,6 +1009,14 @@ class Engine:
             if key:
                 emit(key, cur, total)
         return _p
+
+    @staticmethod
+    def _answer_is_valid(text: str, cfg) -> bool:
+        min_chars = int((cfg.get("api") or {}).get("min_answer_chars") or 20)
+        return (
+            len((text or "").strip()) >= min_chars
+            and bool(verify.REF.search(text or ""))
+        )
 
     @staticmethod
     def _warn_if_truncated(cfg, body: str, question: str, warnings: list[str]) -> None:
