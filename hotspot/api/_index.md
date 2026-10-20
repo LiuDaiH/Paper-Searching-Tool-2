@@ -23,6 +23,8 @@ tags: [索引]
 - 自检 ✅ `python scripts/check_api.py` 全绿（契约往返 / 参数校验 / HTTP / SSE）
 - 样例数据回归 ✅ 2026-10-19：`测试数据集/config.yaml` + 真实 `POST /api/ask` 返回 200，
   `topics.cluster_id` 与答案 `[C:x]` 对齐；追问 `citation_ids` 已实测
+- **2026-10-20 P0**：查询/向量/BM25/RF 缓存、`direction` 向量召回、`usage.stages`
+  start/end、`meta` 附加信号、批量引用校验；评测已改走 `Engine.ask`
 - 待接：账号系统（前端）、全量 G 盘语料回归
 
 ## 3. 文件清单

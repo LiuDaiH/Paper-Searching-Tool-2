@@ -20,9 +20,23 @@ import numpy as np
 
 from .config import load_config, paths_from
 from .corpus import open_corpus, arXivCorpus
-from .structure.embed import load_all
+from .structure.embed import embed_query
 
 _WORD = re.compile(r"[A-Za-z0-9]+")
+_RANKER_CACHE: dict[str, object] = {}
+
+
+def _get_ranker(corpus, cfg):
+    """按数据源复用 RF ranker，避免每次请求重新加载模型/向量/PCA。"""
+    from .rlr import RFRanker, arxiv_ranker  # noqa: PLC0415
+
+    arxiv = isinstance(corpus, arXivCorpus)
+    key = "arxiv" if arxiv else "meeting"
+    rk = _RANKER_CACHE.get(key)
+    if rk is None:
+        rk = arxiv_ranker(cfg) if arxiv else RFRanker()
+        _RANKER_CACHE[key] = rk
+    return rk
 
 
 def _run_mps(pool_ids, *, cfg=None, algo: str = "mag_sub", seconds: float = 45.0):
@@ -106,7 +120,8 @@ def cluster_cfg_from(n: int, intent: str) -> dict:
     return {"min_cluster_size": mcs, "min_samples": max(2, min(3, mcs - 1))}
 
 
-def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None) -> dict:
+def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
+                        bm25=None) -> dict:
     """检索 → 意图定规则 → 聚类 → 标签（venue/year）分析。返回子簇列表。
 
     - `parsed`: `parse_query` 的输出。
@@ -120,14 +135,22 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None) -> d
     if index is not None:
         X_all, ids_all = index
     else:
-        X_all, ids_all = load_all(paths_from(cfg)["workspace"] / "vectors")
+        from .retrieval.vector import load_index  # noqa: PLC0415
+
+        X_all, ids_all = load_index(
+            cfg, kind="arxiv" if isinstance(c, arXivCorpus) else "meeting"
+        )
     row = {pid: i for i, pid in enumerate(ids_all)}
 
     # 检索：每个关键词**单独 search 取并集**（OR），避免 AND 把泛词(如 trends/2024)
     # 变成硬条件导致 0 命中。多主题/泛词噪声交给子聚类滤成噪声簇。
     kw = parsed["keywords"] if parsed["keywords"] else [parsed["topic_en"]]
     from .retrieval.bm25 import build_or_load, search as bm_search  # noqa: PLC0415
-    bm, bm_ids = build_or_load(c, paths_from(cfg)["workspace"] / "bm25_cache.pkl")
+    if bm25 is not None:
+        bm, bm_ids = bm25
+    else:
+        name = "bm25_cache_arxiv.pkl" if isinstance(c, arXivCorpus) else "bm25_cache.pkl"
+        bm, bm_ids = build_or_load(c, paths_from(cfg)["workspace"] / name)
 
     def _bm_hits(ks):
         s = set()
@@ -148,12 +171,12 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None) -> d
         rel = _bm_hits(kw)
         # 向量混合（词 × 义）：query 语义 top-k 并入（MARL 等书写差异由语义召回兜底）。
         try:
-            from md2vectors import embed as _md_embed  # noqa: PLC0415
             qtxt = parsed["topic_en"] or " ".join(kw)
             if qtxt.strip():
-                _entries, _ = _md_embed(["q0"], [qtxt], "BAAI/bge-m3")
-                qv = np.asarray(_entries["q0"]["embedding"], dtype=np.float32)
-                qv = qv / max(float(np.linalg.norm(qv)), 1e-12)
+                qv = embed_query(
+                    qtxt,
+                    model=str((cfg.get("embed") or {}).get("model") or "BAAI/bge-m3"),
+                )
                 Xn = X_all / np.maximum(np.linalg.norm(X_all, axis=1, keepdims=True), 1e-12)
                 scores = Xn @ qv
                 for idx in np.argsort(-scores)[:300]:
@@ -196,8 +219,7 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None) -> d
     _arxiv = isinstance(c, arXivCorpus)
     if rlrag_on:
         try:
-            from .rlr import RFRanker, arxiv_ranker   # noqa: PLC0415
-            rk = arxiv_ranker(cfg) if _arxiv else RFRanker()
+            rk = _get_ranker(c, cfg)
             k = int(rlrag_cfg.get("k") or 300) or 300
             pool = rel if len(rel) <= k else rel[:k]
             rl_future = dict(rk.rank(pool))
@@ -273,8 +295,7 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None) -> d
         # relation：再用 rlRAG 的 RF(S+A) 排「该学/该引」优先级
         # （2026-09-30：用测试性能最好的 RF 先验，不用 RL——见 hotspot/rlr.py）
         try:
-            from .rlr import RFRanker, arxiv_ranker   # noqa: PLC0415
-            ranker = arxiv_ranker(cfg) if _arxiv else RFRanker()
+            ranker = _get_ranker(c, cfg)
             ranked = ranker.rank(rel)
             if ranked:
                 result["rlr_ranked"] = [

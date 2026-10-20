@@ -12,13 +12,28 @@ from ..structure.embed import load_all
 
 __all__ = ["load_index", "cosine_topk", "query_topk"]
 
+#: 进程内向量索引缓存：key = (workspace, 分片文件名/大小/mtime)。
+_INDEX_CACHE: dict[tuple, tuple[np.ndarray, list[str]]] = {}
 
-def load_index(cfg=None):
+
+def load_index(cfg=None, *, kind: str = "meeting"):
     """加载全库向量索引。返回 `(X, ids)`，`X` 已 L2 归一化。"""
     cfg = cfg or load_config()
     ws = paths_from(cfg)["workspace"]
-    X, ids = load_all(ws / "vectors")
+    subdir = "arxiv_vectors" if kind == "arxiv" else "vectors"
+    files = sorted((ws / subdir).glob("vec_*.npz"))
+    key = (
+        str(ws), subdir,
+        tuple((f.name, f.stat().st_size, f.stat().st_mtime_ns) for f in files),
+    )
+    hit = _INDEX_CACHE.get(key)
+    if hit is not None:
+        return hit
+    X, ids = load_all(ws / subdir)
     X = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
+    if len(_INDEX_CACHE) >= 4:
+        _INDEX_CACHE.pop(next(iter(_INDEX_CACHE)), None)
+    _INDEX_CACHE[key] = (X, ids)
     return X, ids
 
 

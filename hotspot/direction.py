@@ -7,7 +7,7 @@
 |---|---|---|
 | FTS5 | `Corpus.search`（导师库那张 FTS5 索引） | 方向原文直接查，尽力召回 |
 | subfield | `Paper.subfields` 标签 | 方向词 ⊆ 某池名 ⇒ 取该池全部论文 |
-| vector | 全库暴力余弦 | **靠 `workspace/vectors/` 的全库向量**——那是 D3/D4 的产物，D2 还没有 ⇒ 降级并明说 |
+| vector | 全库暴力余弦 | `workspace/vectors/` + 查询向量；有词法/标签命中时作补充，只有向量路时过 `min_vector_score` 阈值 |
 
 ⚠️ **`subfields` 有 40–65% 盲区**（robotics / imitation / rlhf / rl_for_science）。
 只看标签会得出"库里没人做"的错结论——**库内缺席 ≠ 没人做**（方案 §3.1）。
@@ -65,18 +65,38 @@ def subfield_hits(corpus, direction: str) -> tuple[set[str], int]:
     return ids, n
 
 
-def _vector_ids(paths: dict[str, Path], direction: str, corpus) -> tuple[set[str], str]:
-    """向量路。**D2 时全库向量还不存在 ⇒ 降级**（`hits_vector=0` + notes 明说）。
-
-    D3/D4 生成 `workspace/vectors/` 后，这一路接上"全库暴力余弦"。
-    现在先把"文件在不在"报清楚——这是方案 R5 的"向量路未跑"分支。
-    """
+def _vector_ids(paths: dict[str, Path], direction: str, corpus,
+                cfg: dict[str, Any] | None = None, *,
+                gate: bool = False) -> tuple[set[str], str]:
+    """向量路：全库暴力余弦；无词法/标签命中时必须达到阈值才接入。"""
     vec_dir = paths["workspace"] / "vectors"
     files = sorted(vec_dir.glob("*.npz")) if vec_dir.exists() else []
     if not files:
         return set(), "向量路未跑：workspace/vectors/ 里还没有全库向量（D3/D4 产物）"
-    # ⚠️ 有文件时目前只降级为"未接入"：分片格式与余弦实现属 D3/D4，不在 D2。
-    return set(), f"向量文件已存在（{len(files)} 个分片），但余弦检索待 D3/D4 接入"
+    if not direction.strip():
+        return set(), "向量路跳过：方向为空"
+    try:
+        from .retrieval.vector import cosine_topk, load_index
+        from .structure.embed import embed_query
+
+        cfg = cfg or load_config()
+        model = str((cfg.get("embed") or {}).get("model") or "BAAI/bge-m3")
+        k = int((cfg.get("retrieval") or {}).get("top_k_vector") or 50)
+        raw_min = (cfg.get("retrieval") or {}).get("min_vector_score")
+        min_score = 0.60 if raw_min is None else float(raw_min)
+        X, ids = load_index(cfg)
+        qv = embed_query(direction, model=model)
+        hits = cosine_topk(qv, X, ids, k=k)
+        # 有 BM25/subfield 命中时，向量作为补充召回；只有向量一路时，
+        # 必须过高阈值，否则任何问题都能捞到 top-k，破坏 REFUSE。
+        threshold = 0.0 if gate else min_score
+        out = {pid for pid, score in hits if score > threshold}
+        if not gate and not out:
+            top = hits[0][1] if hits else 0.0
+            return set(), (f"向量路未达阈值（top={top:.3f} < {min_score:.2f}）")
+        return out, f"向量路命中 {len(out)} 篇（top_k_vector={k}）"
+    except Exception as exc:  # noqa: BLE001 —— 向量失败不阻塞另外两路
+        return set(), f"向量路未运行：{type(exc).__name__}: {exc}"
 
 
 def select(
@@ -92,7 +112,10 @@ def select(
 
     fts_ids = _fts_ids(corpus, direction, fts_k)
     sub_ids, sub_n = subfield_hits(corpus, direction)
-    vec_ids, vec_note = _vector_ids(paths, direction, corpus)
+    vec_ids, vec_note = _vector_ids(
+        paths, direction, corpus, cfg=cfg,
+        gate=bool(fts_ids or sub_ids),
+    )
 
     union: set[str] = set(fts_ids) | sub_ids | vec_ids
     notes = [vec_note] if vec_note else []

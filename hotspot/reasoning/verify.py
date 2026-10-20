@@ -78,21 +78,103 @@ def judge_claim(claim: Claim, evidence: str, client, *, cfg=None) -> tuple[str, 
 
 def verify_claims(claims: list[Claim], *, allowed_ids: frozenset[str],
                   evidence_lookup: dict[str, str],
-                  client=None, cfg=None, progress=None) -> list[Verdict]:
-    """逐条判定。`progress(name, cur, total)` 每 claim 报真实进度（可量化进度条用）。"""
+                  client=None, cfg=None, progress=None,
+                  batch: bool = True) -> list[Verdict]:
+    """判定引用。
+
+    规则判定仍逐条；需要 LLM 的 claim 默认**合并成一次调用**（batch=True），
+    失败或返回不完整时自动回退到逐条 `judge_claim`。progress 仍逐条报告。
+    """
     out: list[Verdict] = []
     total = len(claims)
+    pending: list[tuple[int, Claim, str]] = []
     for i, c in enumerate(claims):
         if progress:
             progress("校验引用", i, total)          # 真实 i/total
         status, detail = classify(c, allowed_ids=allowed_ids)
         if status == "unsupported":
             ev = "\n".join(evidence_lookup.get(i, "") for i in c.cited_ids)
+            pending.append((i, c, ev))
+            out.append(Verdict(claim=c, status="unsupported", detail=""))
+        else:
+            out.append(Verdict(claim=c, status=status, detail=detail))
+
+    # 批量判定；任何异常/缺项都按逐条回退，保持“宁可慢，不可漏”。
+    if pending and client is not None:
+        filled: set[int] = set()
+        if batch and len(pending) > 1:
+            try:
+                filled = _judge_batch(pending, client, out)
+            except Exception:  # noqa: BLE001
+                filled = set()
+        for i, c, ev in pending:
+            if i in filled:
+                continue
             status, detail = judge_claim(c, ev, client, cfg=cfg)
-        out.append(Verdict(claim=c, status=status, detail=detail))
+            out[i] = Verdict(claim=c, status=status, detail=detail)
+    elif pending:
+        for i, c, ev in pending:
+            status, detail = judge_claim(c, ev, client, cfg=cfg)
+            out[i] = Verdict(claim=c, status=status, detail=detail)
     if progress:
         progress("校验引用", total, total)
     return out
+
+
+def _judge_batch(pending: list[tuple[int, Claim, str]], client,
+                 out: list[Verdict]) -> set[int]:
+    """一次 LLM 判定多条 claim；返回已填充的 claim 下标集合。"""
+    schema = {
+        "type": "object",
+        "properties": {
+            "verdicts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "verdict": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["id", "verdict"],
+                },
+            }
+        },
+        "required": ["verdicts"],
+    }
+    payload = [
+        {"id": i, "claim": c.text, "evidence": (ev or "")[:1200]}
+        for i, c, ev in pending
+    ]
+    body = (
+        "逐条判定下列 claim 是否能由对应 evidence 支持。"
+        "只输出 JSON：{\"verdicts\":[{\"id\":整数,\"verdict\":\"supported|unsupported\","
+        "\"reason\":\"短理由\"}]}。id 必须原样返回。\n\n"
+        + repr(payload)
+    )
+    call = client.ask(
+        body,
+        system="引用校验员。逐条判定，不要合并 id；无法判断时判 unsupported。",
+        schema=schema,
+        required=("verdicts",),
+    )
+    if not call.ok:
+        return set()
+    items = (call.data or {}).get("verdicts") or []
+    by_id = {int(x["id"]): x for x in items
+             if isinstance(x, dict) and isinstance(x.get("id"), (int, float))}
+    filled: set[int] = set()
+    for i, c, _ev in pending:
+        item = by_id.get(i)
+        if not item:
+            continue
+        v = str(item.get("verdict") or "").strip().lower()
+        if v not in ("supported", "unsupported"):
+            continue
+        out[i] = Verdict(claim=c, status=v,
+                         detail=str(item.get("reason") or ""))
+        filled.add(i)
+    return filled
 
 
 def build_answer(route: Route, text: str, verdicts: list[Verdict], *,

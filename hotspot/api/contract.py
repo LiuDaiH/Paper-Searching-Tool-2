@@ -503,6 +503,8 @@ class AskResponse:
     usage: Usage = field(default_factory=Usage)
     warnings: list[str] = field(default_factory=list)
     error: Optional[dict[str, Any]] = None
+    #: 算法附加信号（rlRAG 排序、key_path 等）；前端可忽略，评测可用。
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -524,6 +526,7 @@ class AskResponse:
             "usage": self.usage.to_dict(),
             "warnings": list(self.warnings),
             "error": self.error,
+            "meta": dict(self.meta),
         }
 
 

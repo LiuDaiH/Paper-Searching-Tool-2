@@ -16,6 +16,8 @@ tags: [索引]
 - **问题集 ✅ 已建 70 条**（`questions.json`：global 20 / local 20 / refuse 20 / relation 10）。
 - **跨会留出 ✅ baseline 已跑**（`holdout.py`：venue 切分 + 随机/高频对照 P@10/Spearman，0 token）；
   **subcluster 主题预测**（需向量/内存/LLM）待接入。
+- **2026-10-20 P0 迁移**：`run_eval.py` 已从旧 `ui.app.run_qa` 改为 `hotspot.api.Engine.ask`；
+  评测走统一契约，`usage.stages` 保留每阶段 start/end。
 
 ## 3. 文件清单
 

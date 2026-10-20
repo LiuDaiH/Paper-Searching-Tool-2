@@ -16,6 +16,8 @@ tags: [索引]
 - L1–L6 代码骨架 ✅ 全部完成（纯逻辑已单测，数据/API 相关待跑数验证）
 - L6.5 服务层 ✅ 契约 v1（`hotspot/api/`）：`meta` + `ask` 两个接口，Streamlit 与 HTTP 共用；
   自检 `scripts/check_api.py` 全绿；编排已从 `ui/app.py` 搬入 `engine.py`
+- P0（2026-10-20）✅ 查询/向量/BM25/RF 缓存、`direction` 向量召回与阈值、
+  `usage.stages` start/end、批量引用校验；样例真实请求约 34s
 - 待导师库恢复：`embed → cluster → venue_matrix → cluster_card → eval` 完整跑数
 
 ## 3. 文件清单

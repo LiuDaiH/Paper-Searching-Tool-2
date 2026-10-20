@@ -69,6 +69,7 @@ retrieval:
   top_k_direction_fts: 1000     # L1 方向选择器：FTS5 尽力召回的上限（建子语料，尽力多收）
   top_k_local: 8                # LOCAL 路径现场取摘要的篇数
   top_k_vector: 50              # 向量召回候选数（作为 FTS5 的补充路）
+  min_vector_score: 0.60        # 仅向量路时（无 BM25/标签命中）的最低余弦阈值
   top_query_direct: 8           # 关键词直投：BM25 直接命中的篇数（无条件进上下文，救稀疏主题）
   followup_rounds: 3            # 追问模式读取最近几轮对话
   llm_router: true              # 在线路由用 LLM 增强（关键词命中/REFUSE 仍规则优先，失败退 LOCAL）

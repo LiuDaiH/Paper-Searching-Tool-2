@@ -101,7 +101,7 @@ def check_contract() -> None:
     rd = resp.to_dict()
     json.dumps(rd, ensure_ascii=False)
     for key in ("contract_version", "request_id", "route", "answer", "topics",
-                "graph", "usage", "warnings", "error"):
+                "graph", "usage", "warnings", "error", "meta"):
         check(f"响应含 {key}", key in rd)
     check("响应版本", rd["contract_version"] == CONTRACT_VERSION)
     check("引用摊平", rd["answer"]["citations"][0]["title"] == "论文")

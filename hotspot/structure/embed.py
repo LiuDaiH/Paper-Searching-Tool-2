@@ -11,7 +11,10 @@ import md2vectors  # noqa: E402 —— 库根 `工具/` 下的；在导师库外
 
 from dasc.cluster.embed import build_docs, prepare_offline  # noqa: E402  —— 复用，不重写
 
-__all__ = ["embed_corpus", "chunk_path", "load_all", "DEFAULT_OUT"]
+__all__ = ["embed_corpus", "chunk_path", "load_all", "DEFAULT_OUT", "embed_query"]
+
+#: 查询向量缓存：同一问题在 direction 与 subcluster 两段只编码一次。
+_QUERY_CACHE: dict[tuple[str, str], np.ndarray] = {}
 
 
 #: 默认落点：`workspace/vectors/`（config `paths.workspace` 下）。可全量重建，不入库。
@@ -111,6 +114,26 @@ def load_all(out_dir: Path | None = None) -> tuple[np.ndarray, list[str]]:
         vecs.append(z["vectors"])
         all_ids.extend(str(x) for x in z["ids"])
     return np.concatenate(vecs, axis=0), all_ids
+
+
+def embed_query(text: str, *, model: str = "BAAI/bge-m3") -> np.ndarray:
+    """编码一条查询并缓存（按 model + 文本），返回 L2 归一化向量。"""
+    q = (text or "").strip()
+    if not q:
+        return np.zeros(1, dtype=np.float32)
+    key = (str(model), q)
+    hit = _QUERY_CACHE.get(key)
+    if hit is not None:
+        return hit
+    import md2vectors  # noqa: PLC0415 —— 与批量向量化共用同一权重加载路径
+
+    entries, _ = md2vectors.embed(["q0"], [q], model)
+    v = np.asarray(entries["q0"]["embedding"], dtype=np.float32)
+    v = v / max(float(np.linalg.norm(v)), 1e-12)
+    if len(_QUERY_CACHE) > 256:
+        _QUERY_CACHE.clear()
+    _QUERY_CACHE[key] = v
+    return v
 
 
 def main() -> int:
