@@ -99,6 +99,7 @@ def _mmr(
         return ranked[:k]
     X, ids = index
     row = {pid: i for i, pid in enumerate(ids)}
+    max_score = max((h.score for h in ranked), default=1.0) or 1.0
     selected: list[HybridHit] = []
     pool = list(ranked)
     while pool and len(selected) < k:
@@ -106,9 +107,12 @@ def _mmr(
         for i, hit in enumerate(pool):
             j = row.get(hit.paper_id)
             if j is None:
-                score = hit.score
+                rel = hit.score / max_score
+                div = 0.0
             else:
-                rel = float(np.dot(X[j], query_vec))
+                # RRF 已经是融合后的相关性；MMR 只加多样性惩罚，
+                # 不再用 query_vec 覆盖 RRF（否则 rrf_k/权重会失效）。
+                rel = hit.score / max_score
                 if selected:
                     sims = [
                         float(np.dot(X[j], X[row[h.paper_id]]))
@@ -117,7 +121,7 @@ def _mmr(
                     div = max(sims) if sims else 0.0
                 else:
                     div = 0.0
-                score = lam * rel - (1.0 - lam) * div
+            score = lam * rel - (1.0 - lam) * div
             if score > best_v:
                 best_i, best_v = i, score
         selected.append(pool.pop(best_i))
@@ -193,8 +197,8 @@ def retrieve(
     )[:vec_k]
     fused = rrf_fuse(
         {"bm25": bm_rows, "vector": vec_rows},
-        k=int(ret.get("rrf_k") or 60),
-        weights={"bm25": 1.0, "vector": float(ret.get("vector_weight") or 1.0)},
+        k=int(ret.get("rrf_k") or 20),
+        weights={"bm25": 1.0, "vector": float(ret.get("vector_weight") or 0.5)},
     )
     bm_map = {pid: (i + 1, score) for i, (pid, score) in enumerate(bm_rows)}
     vec_map = {pid: (i + 1, score) for i, (pid, score) in enumerate(vec_rows)}
@@ -222,7 +226,7 @@ def retrieve(
             hits = reranked
 
     # 可选 MMR；默认 lambda=0.75，偏相关性。
-    mmr_k = min(int(ret.get("hybrid_top_k") or top_k), top_k)
+    mmr_k = min(int(ret.get("hybrid_top_k") or 100), top_k)
     lam = float(ret.get("mmr_lambda") or 0.75)
     if hits and mmr_k > 0 and bool(ret.get("mmr_enabled", True)):
         qv = embed_query(query, model=model)

@@ -18,6 +18,8 @@ tags: [索引]
   **subcluster 主题预测**（需向量/内存/LLM）待接入。
 - **2026-10-20 P0 迁移**：`run_eval.py` 已从旧 `ui.app.run_qa` 改为 `hotspot.api.Engine.ask`；
   评测走统一契约，`usage.stages` 保留每阶段 start/end。
+- **2026-10-20 P1-1**：`retrieval_eval.py` + `retrieval_questions.json`；样例
+  BM25/vector/hybrid 对比，hybrid 调参后 nDCG@10=0.788、Recall@20=0.833。
 
 ## 3. 文件清单
 
@@ -25,12 +27,14 @@ tags: [索引]
 
 - `questions.json` —— **正式问题集**（70 条：global/local/refuse 各 20 + relation 10），`run_eval.py` 默认读取。
 - `questions.example.json` —— 问题集模板（global / local / refuse 三类示例）
+- `retrieval_questions.json` —— **P1-1 检索评测集**：查询 + 相关论文 id（样例数据，供 Recall/nDCG 调参）
 
 **数据文件**：无（评测产物落 `workspace/ledger/`，`eval_g{0..3}.json`）。
 
 ## 脚本速查
 
 - `run_eval.py` —— 评测框架：`--group g0/g1/g2/g3` 设大创开关，`--live` 走 `llm_eval` 真调，逐题收 4 项指标落 `workspace/ledger/eval_{group}.json`。
+- `retrieval_eval.py` —— P1-1 检索评测：BM25 / vector / hybrid 的 Recall@k、nDCG@10、Precision@10、MRR；`--grid` 扫 hybrid 参数。
 - `eval_compare.py` —— 合并 `eval_g*.json` 出 G0–G3 成对对比表（指标 Δ 相对 g0）。
 - `holdout.py` —— 跨会留出：venue 切分(train=ICLR+ICML25, holdout=NeurIPS25) + 随机/高频 baseline 的 Precision@10/Spearman（0 token，流式轻内存）；subcluster 主题预测占位待接入。
 

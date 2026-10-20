@@ -75,7 +75,7 @@ tags: [索引, 说明书]
 | `hotspot/api/` | contract / engine / http（**前端唯一接口面**） |
 | `hotspot/ui/` | app / store |
 | `scripts/` | check_access / check_direction / check_tree / check_api / run_server |
-| `eval/` | run_eval |
+| `eval/` | run_eval / retrieval_eval |
 
 > 每条脚本一行功能取自其 **docstring 首句**（单一源，README 不另写全文）；`scripts/check_tree.py` 会**自检**这些清单与磁盘 `.py` 是否一致。
 

@@ -74,9 +74,9 @@ retrieval:
   # P1-1 混合检索：BM25 × dense → RRF → 可选 cross-encoder → MMR
   hybrid_bm25_k: 300
   hybrid_vector_k: 100
-  hybrid_top_k: 300
-  rrf_k: 60
-  vector_weight: 1.0
+  hybrid_top_k: 100
+  rrf_k: 20
+  vector_weight: 0.5
   rerank_top_n: 0              # >0 且 rerank_model 有效时才启用 cross-encoder
   rerank_model: ""             # 例：BAAI/bge-reranker-base（需本地可用）
   mmr_enabled: true

@@ -1,0 +1,84 @@
+[
+  {
+    "id": "r_mar",
+    "query": "multi-agent reinforcement learning",
+    "source": "meeting",
+    "relevant_ids": [
+      "orid:2Sl6Ex7Vmo",
+      "orid:1Iny6XlON0",
+      "orid:LWmuPfEYhH",
+      "orid:56CgYnf9Dr",
+      "orid:L0xZPXT3le",
+      "orid:aaeJpJw5Ur"
+    ]
+  },
+  {
+    "id": "r_mar_zh",
+    "query": "多智能体强化学习",
+    "source": "meeting",
+    "relevant_ids": [
+      "orid:2Sl6Ex7Vmo",
+      "orid:1Iny6XlON0",
+      "orid:LWmuPfEYhH",
+      "orid:56CgYnf9Dr",
+      "orid:L0xZPXT3le"
+    ]
+  },
+  {
+    "id": "r_rlhf",
+    "query": "RLHF alignment",
+    "source": "meeting",
+    "relevant_ids": [
+      "orid:gRG6SzbW9p",
+      "orid:OjAU0LLDbe",
+      "orid:GSyX4amBFR",
+      "orid:PXD3FAVHJT"
+    ]
+  },
+  {
+    "id": "r_dpo",
+    "query": "direct preference optimization",
+    "source": "meeting",
+    "relevant_ids": [
+      "orid:COifgrjzXR",
+      "orid:ZfBuhzE556",
+      "orid:d6lIOnvOX2",
+      "orid:qp5VbGTaM0",
+      "orid:CTgEV6qgUy",
+      "orid:WjKea8bGFF",
+      "orid:52r4XJYzjg"
+    ]
+  },
+  {
+    "id": "r_diffusion_policy",
+    "query": "diffusion policy",
+    "source": "meeting",
+    "relevant_ids": [
+      "orid:ldVkAO09Km",
+      "orid:wD2kUVLT1g",
+      "orid:2dqiqST8ZJ",
+      "orid:E2VsqgKNlr",
+      "orid:nK6OnCpd3n",
+      "orid:C3tEX45hJX"
+    ]
+  },
+  {
+    "id": "r_gnn",
+    "query": "graph neural network",
+    "source": "meeting",
+    "relevant_ids": [
+      "orid:8h0x12p3zq",
+      "orid:JDAQwysFOc",
+      "orid:GhPFmTJNfj",
+      "orid:iFKxoceR0",
+      "orid:fU8H4lzkIm"
+    ]
+  },
+  {
+    "id": "r_reject",
+    "query": "quantum computing for cats",
+    "source": "meeting",
+    "relevant_ids": [],
+    "expect_refuse": true
+  }
+]
