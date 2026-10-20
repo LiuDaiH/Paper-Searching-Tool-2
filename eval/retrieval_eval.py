@@ -77,6 +77,7 @@ def evaluate(items, cfg, *, mode: str = "hybrid", top_k: int = 50) -> dict:
     for item in items:
         q = item["query"]
         t0 = time.perf_counter()
+        stats: dict = {}
         if mode == "bm25":
             rows_bm = _bm25_scores(bm, bm_ids, [q], top_k)
             ids = [pid for pid, _ in rows_bm]
@@ -94,6 +95,7 @@ def evaluate(items, cfg, *, mode: str = "hybrid", top_k: int = 50) -> dict:
             )
             ids = [h.paper_id for h in hr.hits]
             notes = hr.notes
+            stats = hr.stats
         elapsed = round(time.perf_counter() - t0, 3)
         rel = set(item.get("relevant_ids") or [])
         m = _metrics(ids, rel, 10) if rel else {
@@ -104,6 +106,8 @@ def evaluate(items, cfg, *, mode: str = "hybrid", top_k: int = 50) -> dict:
         rows.append({
             "id": item["id"], "query": q, "mode": mode,
             "returned": len(ids), "empty": not ids,
+            "answerable": stats.get("answerable") if mode == "hybrid" else None,
+            "query_coverage": stats.get("query_coverage") if mode == "hybrid" else None,
             "expect_refuse": bool(item.get("expect_refuse", False)),
             "top_ids": ids[:10],
             "metrics@10": m, "metrics@20": m20, "metrics@50": m50,

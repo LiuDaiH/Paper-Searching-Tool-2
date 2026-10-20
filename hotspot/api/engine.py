@@ -323,6 +323,14 @@ class Engine:
         parsed = parse_query(req.question, client, cfg=cfg)
         emit("retrieve")
         res = subcluster_adaptive(parsed, cfg=cfg, corpus=c, index=index, bm25=bm25)
+        if res.get("refused"):
+            return _Turn(
+                route="refuse", refused=True,
+                refuse_reason=str(res.get("refuse_reason") or "证据不足"),
+                warnings=list(res.get("retrieval_notes") or []),
+                meta={"retrieval": res.get("retrieval") or {},
+                      "retrieval_notes": res.get("retrieval_notes") or []},
+            )
         max_topics = int((cfg.get("api") or {}).get("max_topics") or 6)
         clusters = (res.get("clusters") or [])[:max_topics]
         if not clusters:
@@ -555,7 +563,18 @@ class Engine:
         # 纯中文方向词三路常常全空 → 若据此拒答会误拒（库里是英文）。
         has_cn = any(0x4E00 <= ord(ch) <= 0x9FFF for ch in req.question)
         if pool.size == 0 and has_cn:
+            if client is None:
+                return _Turn(
+                    route="refuse", refused=True, refuse_reason=REFUSE_REASON,
+                    warnings=warnings + list(pool.notes),
+                )
             r = Route.LOCAL
+        elif client is None and has_cn and pool.hits_fts == 0 and pool.hits_subfield == 0:
+            # dry-run 无翻译/生成能力：中文只命中向量路时不能把空答案当回答。
+            return _Turn(
+                route="refuse", refused=True, refuse_reason=REFUSE_REASON,
+                warnings=warnings + ["离线模式无 LLM，中文仅命中向量路，按拒答处理"],
+            )
         else:
             r = route(req.question, pool, llm=ret_client)
         if r is Route.REFUSE:
@@ -591,6 +610,16 @@ class Engine:
                 )
                 ids = [h.paper_id for h in hr.hits] or ids
                 warnings.extend(hr.notes)
+                if not hr.stats.get("answerable", True):
+                    return _Turn(
+                        route="refuse", refused=True,
+                        refuse_reason=(
+                            "本库没有足够证据覆盖问题关键词"
+                            f"（coverage={hr.stats.get('query_coverage')}）"
+                        ),
+                        warnings=warnings,
+                        meta={"retrieval": hr.stats, "retrieval_notes": hr.notes},
+                    )
             except Exception as exc:  # noqa: BLE001 —— hybrid 失败保留池顺序
                 warnings.append(f"混合检索降级：{type(exc).__name__}: {exc}")
             body, evidence = self._local_body(c, ids)

@@ -28,6 +28,7 @@ tags: [索引]
 - `questions.json` —— **正式问题集**（70 条：global/local/refuse 各 20 + relation 10），`run_eval.py` 默认读取。
 - `questions.example.json` —— 问题集模板（global / local / refuse 三类示例）
 - `retrieval_questions.json` —— **P1-1 检索评测集**：查询 + 相关论文 id（样例数据，供 Recall/nDCG 调参）
+  ⚠️ 正例来自 1,200 篇样例；直接拿到 22,747 篇全量会低估 recall，全量需重新标注。
 
 **数据文件**：无（评测产物落 `workspace/ledger/`，`eval_g{0..3}.json`）。
 

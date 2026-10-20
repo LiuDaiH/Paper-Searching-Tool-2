@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
@@ -18,6 +19,14 @@ from .bm25 import BM25Index
 from .vector import load_index
 
 __all__ = ["HybridHit", "HybridResult", "rrf_fuse", "retrieve"]
+
+_WORD = re.compile(r"[a-z0-9]+")
+_STOP = {
+    "the", "and", "for", "with", "from", "into", "using", "based", "what",
+    "which", "how", "why", "are", "is", "of", "to", "in", "on", "a", "an",
+    "most", "hot", "latest", "recent", "paper", "papers", "method", "methods",
+    "approach", "approaches", "system", "systems", "study", "works",
+}
 
 
 @dataclass
@@ -56,6 +65,47 @@ def rrf_fuse(
 
 def _top_from_scores(scores: dict[str, float], k: int) -> list[tuple[str, float]]:
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)[:max(0, k)]
+
+
+def query_coverage(
+    query: str,
+    keywords: list[str],
+    hits: list[HybridHit],
+    *,
+    corpus,
+    top_n: int = 20,
+    df: Optional[dict] = None,
+    rare_df: int = 2,
+) -> tuple[float, bool, set[str], int]:
+    """返回 (单篇最大覆盖率, 稀有词是否未与上下文同篇覆盖, 稀有词集合, 内容词数)。"""
+    terms: set[str] = set()
+    for text in [query, *keywords]:
+        for w in _WORD.findall((text or "").lower()):
+            if len(w) > 2 and w not in _STOP:
+                terms.add(w)
+    if not terms:
+        return 1.0, False, set(), 0
+    token_sets: list[set[str]] = []
+    for h in hits[:top_n]:
+        p = corpus.get(h.paper_id)
+        if p is not None:
+            token_sets.append(set(_WORD.findall(f"{p.title} {p.abstract}".lower())))
+    if not token_sets:
+        return 0.0, bool(terms), terms, len(terms)
+    # 单篇候选必须同时覆盖问题的主要词；不能把不同噪声论文的命中拼成 100%。
+    best = 0
+    for toks in token_sets:
+        best = max(best, len(terms & toks))
+    rare = {t for t in terms if df is not None and int(df.get(t, 0)) <= rare_df}
+    rare_uncovered = False
+    for term in rare:
+        covered_with_context = any(
+            term in toks and len(terms & toks) >= 2 for toks in token_sets
+        )
+        if not covered_with_context and len(terms) > 1:
+            rare_uncovered = True
+            break
+    return best / len(terms), rare_uncovered, rare, len(terms)
 
 
 def _dense_scores(query: str, *, cfg, index, model: str) -> list[tuple[str, float]]:
@@ -214,6 +264,17 @@ def retrieve(
     ]
     hits.sort(key=lambda h: h.score, reverse=True)
 
+    coverage, rare_uncovered, rare_terms, n_terms = query_coverage(
+        query, keywords, hits, corpus=corpus,
+        top_n=int(ret.get("coverage_top_n") or 10),
+        df=getattr(bm, "df", None),
+    )
+    min_coverage = float(ret.get("min_query_coverage") or 0.80)
+    answerable = bool(hits) and (
+        coverage >= min_coverage
+        or (n_terms <= 2 and not rare_uncovered)
+    )
+
     rerank_top = int(ret.get("rerank_top_n") or 0)
     rerank_model = str(ret.get("rerank_model") or "")
     if rerank_top > 0 and rerank_model:
@@ -243,5 +304,10 @@ def retrieve(
             "fused": len(fused),
             "reranked": bool(rerank_model),
             "returned": len(hits[:top_k]),
+            "query_coverage": round(coverage, 4),
+            "n_terms": n_terms,
+            "rare_terms": sorted(rare_terms),
+            "rare_uncovered": rare_uncovered,
+            "answerable": answerable,
         },
     )

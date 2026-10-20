@@ -171,6 +171,17 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
         query_hits = [h.paper_id for h in hr.hits[:qhpick]]
         retrieval_stats = hr.stats
         retrieval_notes = list(hr.notes)
+        if not retrieval_stats.get("answerable", True):
+            return {
+                "n_papers": 0, "n_clusters": 0, "clusters": [],
+                "intent": parsed["intent"], "refused": True,
+                "refuse_reason": (
+                    "本库没有足够证据覆盖问题关键词"
+                    f"（coverage={retrieval_stats.get('query_coverage')}）"
+                ),
+                "retrieval": retrieval_stats,
+                "retrieval_notes": retrieval_notes,
+            }
     except Exception as exc:  # noqa: BLE001 —— hybrid 失败退回 BM25
         retrieval_notes.append(
             f"hybrid 检索失败，退回 BM25：{type(exc).__name__}: {exc}"
