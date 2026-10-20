@@ -68,11 +68,15 @@ def check_contract() -> None:
                     {"role": "assistant", "text": "回答", "citation_ids": ["p1"]}],
         "llm": {"base_url": "https://x/v1", "model": "m", "api_key": "k"},
         "params": {"max_topics": 4, "streit_garg": False},
+        "scope": {"years": [2025], "years_explicit": True, "venues": ["ICLR"]},
     })
     d = req.to_dict()
     json.dumps(d, ensure_ascii=False)
     check("字段解析", req.mode == "followup" and req.history[1].citation_ids == ["p1"])
     check("参数归一", req.params == {"max_topics": 4, "streit_garg": False})
+    check("scope 解析", req.scope["years"] == [2025]
+          and req.scope["years_explicit"] is True
+          and req.scope["venues"] == ["ICLR"])
     check("key 不回显", d["llm"]["api_key"] == "***")
     check("JSON 可序列化", isinstance(json.dumps(d, ensure_ascii=False), str))
 

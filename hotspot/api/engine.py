@@ -321,15 +321,28 @@ class Engine:
                     index=None, bm25=None) -> Optional[_Turn]:
         emit("parse")
         parsed = parse_query(req.question, client, cfg=cfg)
+        if parsed.get("input_class") in {
+            "nonsense", "injection", "unsafe", "spam", "duplicate",
+            "unsupported_media",
+        }:
+            return _Turn(
+                route="refuse", refused=True,
+                refuse_reason="输入不是可回答的研究问题（%s）"
+                % parsed.get("input_class"),
+                meta={"plan": parsed},
+            )
         emit("retrieve")
-        res = subcluster_adaptive(parsed, cfg=cfg, corpus=c, index=index, bm25=bm25)
+        res = subcluster_adaptive(
+            parsed, cfg=cfg, corpus=c, index=index, bm25=bm25, scope=req.scope
+        )
         if res.get("refused"):
             return _Turn(
                 route="refuse", refused=True,
                 refuse_reason=str(res.get("refuse_reason") or "证据不足"),
                 warnings=list(res.get("retrieval_notes") or []),
                 meta={"retrieval": res.get("retrieval") or {},
-                      "retrieval_notes": res.get("retrieval_notes") or []},
+                      "retrieval_notes": res.get("retrieval_notes") or [],
+                      "plan": parsed},
             )
         max_topics = int((cfg.get("api") or {}).get("max_topics") or 6)
         clusters = (res.get("clusters") or [])[:max_topics]
@@ -428,7 +441,8 @@ class Engine:
                      meta={"rlrag_ranked": res.get("rlrag_ranked") or [],
                            "key_path": res.get("key_path"),
                            "retrieval": res.get("retrieval") or {},
-                           "retrieval_notes": res.get("retrieval_notes") or []})
+                           "retrieval_notes": res.get("retrieval_notes") or [],
+                           "plan": parsed})
 
     def _name_clusters(self, client, clusters, corpus) -> dict[int, tuple[str, str]]:
         """并行给簇命名。单簇失败返回空串，不阻塞整轮。"""
@@ -604,6 +618,8 @@ class Engine:
 
                 hr = hybrid_retrieve(
                     c, hybrid_query, cfg=cfg,
+                    core_terms=[hybrid_query],
+                    scope=req.scope,
                     bm25=self._bm25_index(req.source, c, cfg),
                     index=self._vector_index(req.source, cfg),
                     top_k=top,

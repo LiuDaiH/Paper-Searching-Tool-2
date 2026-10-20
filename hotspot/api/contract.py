@@ -176,6 +176,7 @@ class AskRequest:
         history: 历史消息（只有 followup 用；服务端**不存会话**）。
         llm: 该用户的 API 配置。
         params: 检索/展示参数覆盖（白名单见 :data:`PARAM_SPEC`）。
+        scope: 前端解析的硬过滤条件（years/venues/sources/subfields）。
         dry_run: 不调真 LLM，只走离线链路（前端无 key 时也能把界面跑起来）。
         include_graph: 是否计算/返回 Streit-Garg 关键路径图。
     """
@@ -186,6 +187,7 @@ class AskRequest:
     history: list[Message] = field(default_factory=list)
     llm: LLMConfig = field(default_factory=LLMConfig)
     params: dict[str, Any] = field(default_factory=dict)
+    scope: dict[str, Any] = field(default_factory=dict)
     dry_run: bool = False
     include_graph: bool = True
     #: 问题超过 :data:`MAX_QUESTION` 时被截断（服务层会给一条 warning）。
@@ -227,6 +229,24 @@ class AskRequest:
             raise ApiError(E_BAD_REQUEST, "params 必须是对象")
         params = validate_params(params)
 
+        raw_scope = d.get("scope") or {}
+        if not isinstance(raw_scope, dict):
+            raise ApiError(E_BAD_REQUEST, "scope 必须是对象")
+        scope: dict[str, Any] = {}
+        raw_years = raw_scope.get("years") or []
+        if not isinstance(raw_years, list):
+            raise ApiError(E_BAD_REQUEST, "scope.years 必须是数组")
+        try:
+            scope["years"] = [int(y) for y in raw_years]
+        except (TypeError, ValueError):
+            raise ApiError(E_BAD_REQUEST, "scope.years 必须是整数数组") from None
+        scope["years_explicit"] = bool(raw_scope.get("years_explicit", bool(raw_years)))
+        for key in ("venues", "sources", "subfields", "paper_types"):
+            val = raw_scope.get(key) or []
+            if not isinstance(val, list):
+                raise ApiError(E_BAD_REQUEST, f"scope.{key} 必须是数组")
+            scope[key] = [str(x) for x in val]
+
         return cls(
             question=q,
             source=source,
@@ -234,6 +254,7 @@ class AskRequest:
             history=history,
             llm=LLMConfig.from_dict(d.get("llm")),
             params=params,
+            scope=scope,
             dry_run=bool(d.get("dry_run") or False),
             include_graph=bool(d.get("include_graph", True)),
             question_truncated=truncated,
@@ -244,6 +265,7 @@ class AskRequest:
             "question": self.question, "source": self.source, "mode": self.mode,
             "history": [m.to_dict() for m in self.history],
             "llm": self.llm.to_dict(), "params": dict(self.params),
+            "scope": dict(self.scope),
             "dry_run": self.dry_run, "include_graph": self.include_graph,
         }
 

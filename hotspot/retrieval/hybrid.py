@@ -220,6 +220,8 @@ def retrieve(
     *,
     cfg=None,
     keywords: Optional[list[str]] = None,
+    core_terms: Optional[list[str]] = None,
+    scope: Optional[dict] = None,
     bm25=None,
     index=None,
     top_k: int = 300,
@@ -251,6 +253,30 @@ def retrieve(
         " ".join(keywords) if keywords else query,
         cfg=cfg, index=index, model=model,
     )[:vec_k]
+
+    def _in_scope(pid: str) -> bool:
+        if not scope:
+            return True
+        p = corpus.get(pid)
+        if p is None:
+            return False
+        years = scope.get("years") or []
+        if scope.get("years_explicit") and years and p.year not in years:
+            return False
+        venues = {str(v).lower() for v in (scope.get("venues") or [])}
+        if venues and str(p.venue or "").lower() not in venues:
+            return False
+        subs = {str(s).lower() for s in (scope.get("subfields") or [])}
+        if subs and not (subs & {str(s).lower() for s in (p.subfields or ())}):
+            return False
+        return True
+
+    scope_filtered = 0
+    if scope:
+        before = len(bm_rows) + len(vec_rows)
+        bm_rows = [r for r in bm_rows if _in_scope(r[0])]
+        vec_rows = [r for r in vec_rows if _in_scope(r[0])]
+        scope_filtered = before - len(bm_rows) - len(vec_rows)
     fused = rrf_fuse(
         {"bm25": bm_rows, "vector": vec_rows},
         k=int(ret.get("rrf_k") or 20),
@@ -272,8 +298,9 @@ def retrieve(
 
     # 覆盖率只看原始 topic（query），不看 LLM 产出的同义扩展词；
     # 扩展词用于召回，不能让“offline-to-online”这类变体把门控压低。
+    coverage_text = " ".join(core_terms) if core_terms else query
     coverage, rare_uncovered, rare_terms, n_terms = query_coverage(
-        query, [], hits, corpus=corpus,
+        coverage_text, [], hits, corpus=corpus,
         top_n=int(ret.get("coverage_top_n") or 10),
         df=getattr(bm, "df", None),
     )
@@ -312,6 +339,8 @@ def retrieve(
             "fused": len(fused),
             "reranked": bool(rerank_model),
             "returned": len(hits[:top_k]),
+            "core_terms": list(core_terms or []),
+            "scope_filtered": scope_filtered,
             "query_coverage": round(coverage, 4),
             "n_terms": n_terms,
             "rare_terms": sorted(rare_terms),
