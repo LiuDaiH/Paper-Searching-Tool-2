@@ -30,6 +30,8 @@ _STOP = {
     "research", "researches", "overview", "advance", "advances", "progress",
     "challenge", "challenges", "application", "applications", "direction",
     "directions", "area", "areas", "current", "recently", "new",
+    "popular", "large", "two", "three", "few", "many", "year", "years",
+    "time", "times",
 }
 
 
