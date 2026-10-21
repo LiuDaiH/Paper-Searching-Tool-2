@@ -13,7 +13,7 @@
 3. **可自描述**：:class:`MetaResponse` 带着 `params` 参数表，前端据此**自动生成**
    设置页；加一个参数只改本文件的 :data:`PARAM_SPEC`，前端不用动。
 
-字段总览见 `规划/接口契约-前端与算法.md`。
+字段总览见 `规划/2026-10-18-接口契约-前端与算法.md`。
 """
 
 from __future__ import annotations
@@ -508,7 +508,7 @@ class Usage:
 
 @dataclass
 class AskResponse:
-    """一次问答的完整结果。字段表见 `规划/接口契约-前端与算法.md`。"""
+    """一次问答的完整结果。字段表见 `规划/2026-10-18-接口契约-前端与算法.md`。"""
 
     request_id: str
     source: str

@@ -6,7 +6,7 @@
     python scripts/run_server.py --config 测试数据集/config.yaml   # 用测试数据集调试
 
 接口只有两条：`GET /api/meta`、`POST /api/ask`（+ `GET /api/health`）。
-契约见 `hotspot/api/contract.py`，字段表见 `规划/接口契约-前端与算法.md`。
+契约见 `hotspot/api/contract.py`，字段表见 `规划/2026-10-18-接口契约-前端与算法.md`。
 """
 
 from __future__ import annotations

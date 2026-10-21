@@ -43,5 +43,5 @@ tags: [索引]
 
 - 上位指针：`../_index.md`
 - 服务层：`../api/_index.md`
-- 契约：`../../规划/接口契约-前端与算法.md`
+- 契约：`../../规划/2026-10-18-接口契约-前端与算法.md`
 - 启动：`scripts/run_ui.py`（Streamlit）/ `scripts/run_server.py`（HTTP）

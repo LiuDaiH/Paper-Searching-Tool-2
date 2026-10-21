@@ -15,7 +15,7 @@
 
 | 我要… | 只读这些（按顺序） | 读完就停，别扩散 |
 |---|---|---|
-| 改接口 / 加返回字段 / 加参数 | `规划/接口契约-前端与算法.md` §4–§5 → `hotspot/api/contract.py` → `hotspot/api/engine.py` 的 `Engine.ask` | 不用读 `ui/`、不用读算法内部 |
+| 改接口 / 加返回字段 / 加参数 | `规划/2026-10-18-接口契约-前端与算法.md` §4–§5 → `hotspot/api/contract.py` → `hotspot/api/engine.py` 的 `Engine.ask` | 不用读 `ui/`、不用读算法内部 |
 | 改前端页面 / 接账号系统 | `hotspot/api/_index.md` → 契约文档 §8 → `hotspot/ui/app.py`（Streamlit）或 `web/index.html`（HTTP） | 不用读 `subcluster`/`retrieval` |
 | 换/调被引预测模型（RF 对比） | `hotspot/_index.md` 的 `rlr.py` 条 → `hotspot/rlr.py` → `hotspot/subcluster.py` 里 `rlrag` 那几段 → `eval/run_eval.py` | 接口不用改；新指标加成响应字段即可 |
 | 提速（向量/聚类） | `hotspot/structure/_index.md` → `structure/embed.py` → `structure/cluster.py` → `retrieval/vector.py` | 不动 `ui/` 与契约 |

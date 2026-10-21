@@ -1,6 +1,6 @@
 """rlRAG 线接入移动云杯 —— 用**测试性能最好的算法**（RF(S+A) 先验）排序。
 
-对应 `热点挖掘系统-方案设计.md` §「与大创互鉴」的 **RL/bandit 学检索策略**。
+对应 `2026-09-21-热点挖掘系统-方案设计.md` §「与大创互鉴」的 **RL/bandit 学检索策略**。
 
 **为什么不用 RL，用 RF(S+A)**（2026-09-30 用户拍板 + 测试数据）：
 `dasc/rlr` 的三阶段实测一致表明 **RL(GRPO) 追不上监督先验，RF(S+A) 是性能
@@ -51,7 +51,7 @@ class RFRanker:
     `score(cand)` 单篇打分。
 
     默认用会议库模型（`future_rf.pkl`）；传周报数据目录则用 `arxiv_ranker(cfg)`
-    指向 `future_rf_arxiv.pkl` + 周报向量/图（R1–R3，规划-周报接入大创算法.md）。
+    指向 `future_rf_arxiv.pkl` + 周报向量/图（R1–R3，2026-10-02-规划-周报接入大创算法.md）。
     """
 
     def __init__(self, *, model=None, vecs=None, mean=None, graph=None):

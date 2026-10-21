@@ -1,4 +1,4 @@
-"""R1 周报引用图拉取 —— Semantic Scholar 单条 GET，增量断点续跑（规划-周报接入大创算法.md）。
+"""R1 周报引用图拉取 —— Semantic Scholar 单条 GET，增量断点续跑（2026-10-02-规划-周报接入大创算法.md）。
 
 逐篇 GET `api.semanticscholar.org/graph/v1/paper/ARXIV:<id>?fields=references,externalIds`，
 拉每篇的 `references[].arxivId`，落 `workspace/depgraph/`：

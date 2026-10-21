@@ -1,5 +1,5 @@
 """R3 周报未来被引 RF 重训 —— 仿 `dasc/rlr/export_future_rf`，改用周报数据
-（规划-周报接入大创算法.md）。
+（2026-10-02-规划-周报接入大创算法.md）。
 
 读周报 `workspace/arxiv_rl/`：
   mobile_corpus_vectors_arxiv.npz + rl_prep/global_mean.npy（R2 产）

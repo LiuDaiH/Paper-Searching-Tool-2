@@ -1,5 +1,5 @@
 """R2 周报 rl_prep 构建 —— 从 P3 的 `arxiv_vectors/` 整理成大创风格前置数据
-（规划-周报接入大创算法.md）。
+（2026-10-02-规划-周报接入大创算法.md）。
 
 产出 `workspace/arxiv_rl/`：
   mobile_corpus_vectors_arxiv.npz   {vectors(4369×1024 fp32), ids}   ← 供 RF 特征/向量检索

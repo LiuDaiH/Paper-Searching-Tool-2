@@ -165,7 +165,7 @@ def open_corpus(cfg=None) -> MergedCorpus:
 
 
 class arXivCorpus(MergedCorpus):
-    """arXiv 周报连续流语料（独立源，共享引擎，规划-接入arXiv周报与发布.md）。
+    """arXiv 周报连续流语料（独立源，共享引擎，2026-10-02-规划-接入arXiv周报与发布.md）。
 
     读周报 `数据/papers.jsonl`。`venue` 恒为 `"arXiv"`，另带 `topics`（arXiv 分类）
     与 `first_seen`（入库日期）。**不参与跨会三态**——热点轴换成分类/周窗口。

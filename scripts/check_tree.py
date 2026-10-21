@@ -4,7 +4,7 @@
 查三件事：
   1. 悬空双链      [[X]] 指向不存在的文件
   2. 孤儿 md       从根 README 出发走不到（"从根就能读全"的承诺，
-                   这是它唯一能被证伪的地方）
+                   这是它唯一能被证伪的地方；直辖计划目录按目录级入口计算）
   3. README 覆盖   每个含 md 的一级文件夹是否都有自己的 README（或直辖豁免）
 
 本项目的两张「不在树上」的表：
@@ -53,8 +53,15 @@ CONFIG = {
     # **按设计就没有子 README** 的一级文件夹（"直辖"文件夹，见手册 §2）。
     # 不登记它，检查会把设计报成缺陷。
     "no_readme_ok": {
-        "日志": "根直辖，索引在根 README §2（folder-readme 手册 §2）",
-        "规划": "根直辖，索引在根 README §2（folder-readme 手册 §2）",
+        "日志": "根直辖；根 README 只索引这个文件夹，不逐篇登记",
+        "规划": "根直辖；根 README 只索引这个文件夹，不逐篇登记",
+    },
+
+    # 根 README 只需登记这些目录本身；其下文件不再逐篇进入可达性检查。
+    # 前提是根 README 确实写了目录名，否则仍会报孤儿，防止“配置豁免掩盖漏登记”。
+    "folder_indexed": {
+        "日志": "直辖流水账目录，按目录入口可达",
+        "规划": "直辖长期参考目录，按目录入口可达",
     },
 }
 
@@ -216,6 +223,15 @@ def main() -> int:
         r for r in md_by_path
         if not is_data(r, rules) and r not in CONFIG["exempt"]
     }
+    root_raw = md_by_path[args.root].read_text(encoding="utf-8", errors="replace")
+    folder_indexed_nodes = set()
+    for top in CONFIG["folder_indexed"]:
+        if f"{top}/" not in root_raw:
+            continue
+        folder_indexed_nodes.update(
+            r for r in doc_nodes if r.startswith(f"{top}/")
+        )
+    reachable.update(folder_indexed_nodes)
     for r in doc_nodes:
         if r in reachable:
             continue

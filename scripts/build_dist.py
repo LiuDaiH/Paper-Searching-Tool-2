@@ -19,11 +19,7 @@ DIST_DIR = ROOT / "发布"
 ITEMS = [
     "hotspot", "scripts",
     "config.yaml", "requirements.txt",
-    "README.md", "AGENTS.md",
-    "热点挖掘系统-方案设计.md",
-    "测试计划-大创接入评测.md",
-    "规划-接入arXiv周报与发布.md",
-    "规划-周报接入大创算法.md",
+    "README.md", "AGENTS.md", "规划",
 ]
 EXCLUDE_DIRS = {"__pycache__", ".git", ".zhanlu", ".playwright-mcp", "workspace", "日志", "发布", "eval"}
 EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".log"}
