@@ -2,6 +2,7 @@
   {
     "id": "r_mar",
     "query": "multi-agent reinforcement learning",
+    "keywords": ["multi-agent reinforcement learning", "MARL", "multiagent reinforcement learning"],
     "source": "meeting",
     "relevant_ids": [
       "orid:2Sl6Ex7Vmo",
@@ -15,6 +16,7 @@
   {
     "id": "r_mar_zh",
     "query": "多智能体强化学习",
+    "keywords": ["multi-agent reinforcement learning", "MARL", "multiagent reinforcement learning"],
     "source": "meeting",
     "relevant_ids": [
       "orid:2Sl6Ex7Vmo",
@@ -27,6 +29,7 @@
   {
     "id": "r_rlhf",
     "query": "RLHF alignment",
+    "keywords": ["RLHF", "reinforcement learning from human feedback", "alignment"],
     "source": "meeting",
     "relevant_ids": [
       "orid:gRG6SzbW9p",
@@ -38,6 +41,7 @@
   {
     "id": "r_dpo",
     "query": "direct preference optimization",
+    "keywords": ["direct preference optimization", "DPO"],
     "source": "meeting",
     "relevant_ids": [
       "orid:COifgrjzXR",
@@ -52,6 +56,7 @@
   {
     "id": "r_diffusion_policy",
     "query": "diffusion policy",
+    "keywords": ["diffusion policy", "diffusion policies", "visuomotor diffusion policy"],
     "source": "meeting",
     "relevant_ids": [
       "orid:ldVkAO09Km",
@@ -65,6 +70,7 @@
   {
     "id": "r_gnn",
     "query": "graph neural network",
+    "keywords": ["graph neural network", "graph neural networks", "GNN"],
     "source": "meeting",
     "relevant_ids": [
       "orid:8h0x12p3zq",
@@ -77,6 +83,7 @@
   {
     "id": "r_reject",
     "query": "quantum computing for cats",
+    "keywords": ["quantum computing", "cats"],
     "source": "meeting",
     "relevant_ids": [],
     "expect_refuse": true

@@ -1,7 +1,7 @@
 """服务端源码打包 —— 打 `发布/服务端源码-<日期>.zip`（可重复）。
 
 内容：核心源码（hotspot/、scripts/）+ config.yaml + requirements.txt +
-入口/说明文档。排除：workspace（数据产物，可重建）、日志、.git、.zhanlu、
+入口/说明文档。排除：workspace（数据产物，可重建）、日志、.git、
 __pycache__、*.pyc、.playwright-mcp、debug.log、临时测试脚本。
 """
 
@@ -21,7 +21,7 @@ ITEMS = [
     "config.yaml", "requirements.txt",
     "README.md", "AGENTS.md", "规划",
 ]
-EXCLUDE_DIRS = {"__pycache__", ".git", ".zhanlu", ".playwright-mcp", "workspace", "日志", "发布", "eval"}
+EXCLUDE_DIRS = {"__pycache__", ".git", ".playwright-mcp", "workspace", "日志", "发布", "eval"}
 EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".log"}
 
 RUN_GUIDE = """# 发布运行说明（服务端 + 远程客户端）

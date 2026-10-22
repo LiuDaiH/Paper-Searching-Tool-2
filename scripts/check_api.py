@@ -16,14 +16,19 @@
 
 from __future__ import annotations
 
+import argparse
+import contextlib
+import io
 import json
 import sys
 import threading
 import urllib.error
 import urllib.request
+import warnings
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 import hotspot  # noqa: E402,F401 —— 装闸① + 接线 dasc
 from hotspot.api.contract import (  # noqa: E402
@@ -43,14 +48,20 @@ from hotspot.api.engine import Engine  # noqa: E402
 from hotspot.api.http import create_server  # noqa: E402
 
 FAILS: list[str] = []
+CHECKS = 0
+QUIET = False
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
+    global CHECKS
+    CHECKS += 1
     if cond:
-        print(f"  ok  {name}")
+        if not QUIET:
+            print(f"  ok  {name}")
     else:
         FAILS.append(f"{name}: {detail}")
-        print(f"  FAIL {name}  {detail}")
+        if not QUIET:
+            print(f"  FAIL {name}  {detail}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -254,6 +265,52 @@ def check_hybrid() -> None:
     })
     check("RRF 双通道优先", max(fused, key=fused.get) == "b", str(fused))
     check("RRF 保留单通道候选", {"a", "b", "c"} <= set(fused), str(fused))
+
+
+def check_coverage() -> None:
+    """全局粗簇归属与题型路径必须可独立测试，不依赖工作区产物。"""
+    import numpy as np
+
+    from hotspot.retrieval.coverage import (
+        GlobalCoverageIndex,
+        coverage_policy,
+        select_candidates,
+    )
+
+    print("[2g] global coverage")
+    coverage = GlobalCoverageIndex(
+        assignment={"a": 1, "c": 1, "e": 1, "b": 2, "f": 2},
+        centroids=np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+        centroid_ids=(1, 2),
+        cluster_sizes={1: 3, 2: 2},
+        spread_state={1: "铺开", 2: "新进"},
+        vector_ids=["a", "c", "e", "b", "f", "d", "low"],
+        vector_rows={pid: i for i, pid in enumerate(
+            ["a", "c", "e", "b", "f", "d", "low"]
+        )},
+        index_vectors=np.array([
+            [1.0, 0.0], [1.0, 0.0], [1.0, 0.0],
+            [0.0, 1.0], [0.0, 1.0], [0.0, 1.0],
+            [0.7071, 0.7071],
+        ], dtype=np.float32),
+    )
+    check("已归属论文使用稳定簇", coverage.assign("a") == (1, "cluster_membership"))
+    check("未归属论文使用最近质心",
+          coverage.assign("d") == (2, "nearest_centroid"))
+    check("低 margin 归属不伪装成确定簇",
+          coverage.assign("low") == (None, "low_confidence"))
+    kept, selection = select_candidates(
+        coverage, ["a", "c", "e", "b", "f"], target_share=0.60,
+    )
+    check("趋势题保留粗主题候选",
+          set(kept) == {"a", "c", "e"}
+          and selection["selected_cluster_ids"] == [1],
+          str(selection))
+    check("题型覆盖策略稳定",
+          coverage_policy({"answer_mode": "global_trend"}) == "coarse_then_fine"
+          and coverage_policy({"answer_mode": "paper_fact"}) == "paper_first"
+          and coverage_policy({"answer_mode": "compare"}) == "per_side"
+          and coverage_policy({"answer_mode": "relation"}) == "dual_concept")
 
 
 def check_query_plan() -> None:
@@ -567,6 +624,12 @@ def check_evidence() -> None:
                 "p2": "Quantum algorithms for computing equilibria",
                 "p3": "Direct Preference Optimization removes an explicit reward model",
                 "p4": "RLOO improves sample efficiency for policy optimization",
+                "p5": "Dreamer world model uses latent dynamics and actor-critic optimization",
+                "p6": "Visuomotor policy uses RGB image input and robot state",
+                "p7": "Traffic signal control with reinforcement learning reduces congestion",
+                "p8": "Urban traffic signal control is optimized by reinforcement learning",
+                "p9": "Deep segmentation networks for natural-image benchmarks",
+                "p10": "Clinical benchmarks for image analysis",
             }
             return SimpleNamespace(title=data.get(pid, ""), abstract="")
 
@@ -605,6 +668,112 @@ def check_evidence() -> None:
           paraphrased_result.decision == "answer"
           and paraphrased_result.requirement_results[0]["satisfied"] is False,
           paraphrased_result.to_dict())
+
+    versioned_plan = {
+        "answer_mode": "paper_fact",
+        "intent": "fact",
+        "core_concepts": [{
+            "name": "Model architecture of the Dreamer series",
+            "aliases": ["Model architecture of the Dreamer series"],
+            "required": False,
+        }],
+        "anchors": ["Dreamer", "DreamerV2", "DreamerV3"],
+        "requirements": [],
+    }
+    versioned = evaluate(
+        Corpus(), [SimpleNamespace(paper_id="p5")], versioned_plan,
+    )
+    check("同系列多版本 anchor 允许任一命中",
+          versioned.decision == "answer", versioned.to_dict())
+
+    partial_plan = {
+        "answer_mode": "paper_fact",
+        "intent": "fact",
+        "core_concepts": [
+            {"name": "visuomotor policy", "aliases": ["visuomotor"], "required": True},
+            {"name": "input representation", "aliases": ["observation encoding"], "required": True},
+            {"name": "visual observation", "aliases": ["RGB image"], "required": True},
+            {"name": "proprioceptive state", "aliases": ["robot state"], "required": True},
+        ],
+        "anchors": [],
+        "requirements": [],
+    }
+    partial = evaluate(
+        Corpus(), [SimpleNamespace(paper_id="p6")], partial_plan,
+    )
+    check("核心概念覆盖率达到阈值可回答",
+          partial.decision == "answer" and partial.required_coverage >= 0.75,
+          partial.to_dict())
+
+    optional_only = {
+        "answer_mode": "global_trend",
+        "intent": "fact",
+        "core_terms": ["Dreamer world model"],
+        "core_concepts": [{
+            "name": "optional topic label",
+            "aliases": ["optional topic label"],
+            "required": False,
+        }],
+        "anchors": [],
+        "requirements": [],
+    }
+    check("无可选概念时不被覆盖率误拒",
+          evaluate(
+              Corpus(), [SimpleNamespace(paper_id="p5")], optional_only,
+          ).decision == "answer")
+
+    traffic_plan = {
+        "answer_mode": "global_trend",
+        "intent": "trend",
+        "core_terms": ["traffic signal control", "reinforcement learning"],
+        "core_concepts": [
+            {"name": "traffic signal control", "aliases": ["TSC"], "required": False},
+            {"name": "reinforcement learning", "aliases": ["RL"], "required": False},
+        ],
+        "anchors": [],
+        "requirements": [],
+    }
+    traffic = evaluate(
+        Corpus(),
+        [SimpleNamespace(paper_id="p7"), SimpleNamespace(paper_id="p8")],
+        traffic_plan,
+    )
+    check("真实跨域应用有证据时不被领域门误拒",
+          traffic.decision == "answer" and len(traffic.domain_support_ids) >= 2,
+          traffic.to_dict())
+
+    medical_plan = {
+        "answer_mode": "global_trend",
+        "intent": "trend",
+        "core_terms": ["CT segmentation", "medical imaging"],
+        "core_concepts": [{
+            "name": "medical imaging",
+            "aliases": ["clinical imaging"],
+            "required": False,
+        }],
+        "anchors": [],
+        "requirements": [],
+    }
+    medical = evaluate(
+        Corpus(),
+        [SimpleNamespace(paper_id="p9"), SimpleNamespace(paper_id="p10")],
+        medical_plan,
+    )
+    check("候选未支持核心领域时硬拒",
+          medical.decision == "out_of_scope", medical.to_dict())
+
+    generic_plan = {
+        "answer_mode": "global_trend",
+        "intent": "trend",
+        "core_terms": ["optimization", "control"],
+        "core_concepts": [],
+        "anchors": [],
+        "requirements": [],
+    }
+    check("泛词不能单独证明域内可答",
+          evaluate(
+              Corpus(), [SimpleNamespace(paper_id="p4")], generic_plan,
+          ).decision == "clarify")
 
     compare_plan = {
         "answer_mode": "compare",
@@ -695,32 +864,44 @@ def check_engine_meta() -> None:
         print(f"  FAIL Engine.meta 抛异常：{type(exc).__name__}: {exc}")
 
 
-def main() -> int:
-    print(f"契约版本 {CONTRACT_VERSION} · 参数 {len(PARAM_SPEC)} 个\n")
-    check_contract()
-    print()
-    check_search_semantics()
-    print()
-    check_hybrid()
-    print()
-    check_query_plan()
-    print()
-    check_plan_consumption()
-    print()
-    check_claim_first()
-    print()
-    check_evidence()
-    print()
-    check_engine_meta()
-    print()
-    check_http()
-    print()
+def main(argv: list[str] | None = None) -> int:
+    global QUIET
+    parser = argparse.ArgumentParser(description="接口契约与离线冒烟自检")
+    parser.add_argument("--quiet", action="store_true",
+                        help="只输出失败项与总数")
+    args = parser.parse_args(argv)
+    QUIET = args.quiet
+
+    checks = (
+        check_contract,
+        check_search_semantics,
+        check_hybrid,
+        check_coverage,
+        check_query_plan,
+        check_plan_consumption,
+        check_claim_first,
+        check_evidence,
+        check_engine_meta,
+        check_http,
+    )
+    sink = io.StringIO() if QUIET else None
+    if QUIET:
+        with contextlib.redirect_stdout(sink):
+            for fn in checks:
+                fn()
+    else:
+        print(f"契约版本 {CONTRACT_VERSION} · 参数 {len(PARAM_SPEC)} 个\n")
+        for fn in checks:
+            fn()
+            print()
+
     if FAILS:
         print(f"✗ {len(FAILS)} 处失败：")
         for f in FAILS:
             print("   -", f)
+        print(f"checks={CHECKS} failures={len(FAILS)}")
         return 1
-    print("✓ 接口自检全绿（契约 / 参数 / 检索语义 / HTTP / SSE）")
+    print(f"✓ checks={CHECKS} failures=0")
     return 0
 
 

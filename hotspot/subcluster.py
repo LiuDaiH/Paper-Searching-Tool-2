@@ -363,18 +363,6 @@ def parse_query(question: str, client, *, cfg=None) -> dict:
     }
 
 
-def cluster_cfg_from(n: int, intent: str) -> dict:
-    """依子集规模 + 意图定聚类规则（方案第 3 步）。"""
-    mcs = 8
-    if n < 100:
-        mcs = 3
-    elif n < 500:
-        mcs = 5
-    if intent in ("worth", "newfield"):      # 要抓新/细子主题 → 更细
-        mcs = max(2, mcs - 3)
-    return {"min_cluster_size": mcs, "min_samples": max(2, min(3, mcs - 1))}
-
-
 def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
                         bm25=None, scope=None, cluster: bool = True) -> dict:
     """检索 → 意图定规则 → 聚类 → 标签（venue/year）分析。返回子簇列表。
@@ -384,8 +372,6 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
     - `cluster=False`: 只做检索和证据判断，供 local/compare 等论文级路径使用。
     - 子簇含 `members / representative / venue_counts / year_counts`。
     """
-    from dasc.cluster import clusterers  # noqa: PLC0415
-
     cfg = cfg or load_config()
     c = corpus if corpus is not None else open_corpus(cfg)
     if index is not None:
@@ -414,10 +400,11 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
     retrieval_stats: dict = {}
     retrieval_notes: list[str] = []
     evidence_hits: list = []
+    evidence = None
     try:
-        from .retrieval.hybrid import retrieve as hybrid_retrieve  # noqa: PLC0415
+        from .harness.tools import paper_search  # noqa: PLC0415
 
-        hr = hybrid_retrieve(
+        search = paper_search(
             c,
             parsed["topic_en"] or " ".join(kw),
             cfg=cfg,
@@ -433,7 +420,11 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
                 else float((cfg.get("retrieval") or {}).get("min_query_coverage") or 0.80)
             ),
         )
-        rel = {h.paper_id for h in hr.hits if h.paper_id in row}
+        if search.error is not None:
+            raise RuntimeError(
+                f"{search.error.code}: {search.error.message}"
+            )
+        rel = {pid for pid in search.ids if pid in row}
         # 保留 BM25 的稀有词直投；hybrid top-k 可能把 RLOO 这类低频词排到后面。
         direct_scores: dict[str, float] = {}
         for w in kw:
@@ -446,27 +437,55 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
         direct_hits = sorted(direct_scores, key=lambda p: -direct_scores[p])
         rel.update(direct_hits)
         query_hits = list(dict.fromkeys(
-            direct_hits[:qhpick] + [h.paper_id for h in hr.hits[:qhpick]]
+            direct_hits[:qhpick] + list(search.ids[:qhpick])
         ))[:qhpick]
-        retrieval_stats = hr.stats
-        retrieval_notes = list(hr.notes)
-        evidence_hits = list(hr.evidence_hits or hr.hits)
-        from .reasoning.evidence import evaluate as evaluate_evidence  # noqa: PLC0415
+        search_data = search.data or {}
+        retrieval_stats = dict(search_data.get("stats") or {})
+        retrieval_notes = list(search_data.get("notes") or [])
+        from types import SimpleNamespace  # noqa: PLC0415
 
-        evidence = evaluate_evidence(
-            c, hr.evidence_hits or hr.hits, parsed
+        evidence_hits = [
+            SimpleNamespace(paper_id=str(pid))
+            for pid in (search_data.get("evidence_ids") or search.ids)
+            if str(pid) in row
+        ]
+        from .retrieval.coverage import summarize as summarize_coverage  # noqa: PLC0415
+
+        global_coverage = summarize_coverage(
+            cfg,
+            pids=[h.paper_id for h in evidence_hits],
+            index=(X_all, ids_all),
         )
-        retrieval_stats["evidence"] = evidence.to_dict()
+        retrieval_stats["global_coverage"] = global_coverage
+        retrieval_stats["global_cluster_id"] = global_coverage.get(
+            "dominant_cluster_id"
+        )
+        retrieval_stats["cluster_coverage"] = global_coverage.get(
+            "assigned_coverage"
+        )
+        from .harness.tools import evidence_gate  # noqa: PLC0415
+
+        evidence_observation = evidence_gate(
+            c, [h.paper_id for h in evidence_hits], parsed,
+        )
+        if evidence_observation.error is not None:
+            raise RuntimeError(
+                f"{evidence_observation.error.code}: "
+                f"{evidence_observation.error.message}"
+            )
+        evidence = dict(evidence_observation.data.get("evidence") or {})
+        retrieval_stats["evidence"] = evidence
         structured_gate = bool(parsed.get("core_concepts") or parsed.get("anchors"))
-        if structured_gate and evidence.decision != "answer":
+        if structured_gate and evidence.get("decision") != "answer":
             return {
                 "n_papers": 0, "n_clusters": 0, "clusters": [],
                 "intent": parsed["intent"], "refused": True,
                 "refuse_reason": (
-                    f"证据不足（{evidence.decision}）：{evidence.reason}"
+                    f"证据不足（{evidence.get('decision')}）："
+                    f"{evidence.get('reason')}"
                 ),
-                "decision": evidence.decision,
-                "evidence": evidence.to_dict(),
+                "decision": evidence.get("decision"),
+                "evidence": evidence,
                 "retrieval": retrieval_stats,
                 "retrieval_notes": retrieval_notes,
             }
@@ -489,10 +508,60 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
             if w.strip():
                 rel.update(pid for pid in bm_search(bm, bm_ids, w, k=300) if pid in row)
         query_hits = sorted(rel)[:qhpick]
+        if rel:
+            try:
+                from .retrieval.coverage import summarize as summarize_coverage  # noqa: PLC0415
+
+                global_coverage = summarize_coverage(
+                    cfg, pids=list(rel)[:30], index=(X_all, ids_all)
+                )
+                retrieval_stats["global_coverage"] = global_coverage
+                retrieval_stats["global_cluster_id"] = global_coverage.get(
+                    "dominant_cluster_id"
+                )
+                retrieval_stats["cluster_coverage"] = global_coverage.get(
+                    "assigned_coverage"
+                )
+            except Exception as coverage_exc:  # noqa: BLE001
+                retrieval_notes.append(
+                    "全局覆盖不可用："
+                    f"{type(coverage_exc).__name__}: {coverage_exc}"
+                )
+    from .retrieval.coverage import coverage_policy  # noqa: PLC0415
+
+    policy = coverage_policy(parsed)
+    retrieval_stats["coverage_policy"] = policy
     if not rel:
         return {"n_papers": 0, "n_clusters": 0, "clusters": [],
                 "intent": parsed["intent"], "retrieval": retrieval_stats,
                 "retrieval_notes": retrieval_notes}
+
+    if policy == "coarse_then_fine":
+        from .harness.tools import coarse_cluster_select  # noqa: PLC0415
+
+        selected = coarse_cluster_select(
+            list(rel), cfg=cfg, index=(X_all, ids_all),
+        )
+        if selected.error is None:
+            kept = list(selected.ids)
+            protected = set(query_hits)
+            if evidence and evidence.get("evidence_id"):
+                protected.add(str(evidence["evidence_id"]))
+            kept = list(dict.fromkeys([*protected, *kept]))
+            global_coverage = retrieval_stats.setdefault("global_coverage", {})
+            global_coverage["selection"] = selected.data.get("selection") or {}
+            rel = set(kept)
+        else:
+            retrieval_stats.setdefault("global_coverage", {})["selection"] = {
+                "policy": "coarse_then_fine",
+                "selected_cluster_ids": [],
+                "selected_share": 0.0,
+                "retained_candidates": len(rel),
+                "dropped_candidates": 0,
+                "fallback_reason": (
+                    f"coarse_path_error:{selected.error.code}"
+                ),
+            }
     rel = sorted(rel, key=lambda pid: row[pid])   # 按向量索引序稳定排序
 
     # 标签筛选（year）—— 单独筛，不入聚类
@@ -501,8 +570,14 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
         years = scope.get("years") or []
     else:
         years = parsed.get("years") or []
-    if years and set(years) != {2024, 2025}:
-        rel = [pid for pid in rel if (p := c.get(pid)) is not None and p.year in years]
+    from .harness.tools import candidate_filter  # noqa: PLC0415
+
+    filtered = candidate_filter(c, rel, years=years)
+    rel = list(filtered.ids)
+    retrieval_stats["candidate_filter"] = dict(filtered.counts)
+    retrieval_stats["candidate_filter"]["years_applied"] = bool(
+        filtered.flags.get("years_applied")
+    )
     if not rel:
         return {"n_papers": 0, "n_clusters": 0, "clusters": [], "intent": parsed["intent"]}
     allowed_ids = set(rel)
@@ -536,20 +611,27 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
         except Exception as e:  # noqa: BLE001 —— rlRAG 失败降级，不阻塞
             rlrag_error = f"{type(e).__name__}: {e}"
 
+    from .harness.tools import local_cluster  # noqa: PLC0415
+
     Xs = X_all[[row[p] for p in rel]]
-    cc = cluster_cfg_from(len(rel), parsed["intent"])
-    try:
-        cl = clusterers.run(Xs, rel, min_cluster_size=cc["min_cluster_size"],
-                            min_samples=cc["min_samples"], prep="whiten",
-                            n_components=32, metric="euclidean")
-    except Exception as e:  # noqa: BLE001
-        return {"n_papers": len(rel), "n_clusters": 0, "clusters": [], "error": str(e),
-                "intent": parsed["intent"]}
+    clustered = local_cluster(Xs, rel, intent=parsed["intent"])
+    if clustered.error is not None:
+        return {
+            "n_papers": len(rel),
+            "n_clusters": 0,
+            "clusters": [],
+            "error": clustered.error.message,
+            "intent": parsed["intent"],
+            "retrieval": retrieval_stats,
+            "retrieval_notes": retrieval_notes,
+        }
+    cc = dict((clustered.data or {}).get("cluster_cfg") or {})
 
     out = []
-    for cld in cl.clusters:
+    for cld in (clustered.data or {}).get("clusters") or []:
         vc, yc = Counter(), Counter()
-        for pid in cld.members:
+        members = list(cld.get("members") or [])
+        for pid in members:
             p = c.get(pid)
             if p is None:
                 continue
@@ -557,12 +639,12 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
                 vc[p.venue] += 1
             if p.year is not None:
                 yc[p.year] += 1
-        rep = cld.centroid_nearest
+        rep = str(cld.get("representative") or "")
         if rlrag_on and not rlrag_error:
-            rep = max(cld.members, key=lambda pid: rl_future.get(pid, 0.0))
+            rep = max(members, key=lambda pid: rl_future.get(pid, 0.0))
         out.append({
-            "cluster_id": cld.label, "size": cld.size,
-            "members": list(cld.members), "representative": rep,
+            "cluster_id": cld["cluster_id"], "size": int(cld["size"]),
+            "members": members, "representative": rep,
             "venue_counts": dict(vc), "year_counts": {int(y): n for y, n in yc.items()},
         })
 

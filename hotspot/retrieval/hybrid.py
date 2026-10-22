@@ -117,7 +117,14 @@ def query_coverage(
     return best / len(terms), rare_uncovered, rare, len(terms)
 
 
-def _dense_scores(query: str, *, cfg, index, model: str) -> list[tuple[str, float]]:
+def _dense_scores(
+    query: str,
+    *,
+    cfg,
+    index,
+    model: str,
+    k: int | None = None,
+) -> list[tuple[str, float]]:
     if not query.strip():
         return []
     X, ids = index
@@ -126,8 +133,9 @@ def _dense_scores(query: str, *, cfg, index, model: str) -> list[tuple[str, floa
         return []
     Xn = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
     scores = Xn @ qv
-    k = int((cfg.get("retrieval") or {}).get("top_k_vector") or 50)
-    top = np.argpartition(-scores, min(k, len(scores) - 1))[:k]
+    limit = int(k or (cfg.get("retrieval") or {}).get("top_k_vector") or 50)
+    limit = max(1, min(limit, len(scores)))
+    top = np.argpartition(-scores, min(limit, len(scores) - 1))[:limit]
     top = top[np.argsort(-scores[top])]
     return [(ids[int(i)], float(scores[int(i)])) for i in top]
 
@@ -255,7 +263,7 @@ def retrieve(
     bm_rows = _bm25_scores(bm, bm_ids, keywords, bm_k)
     vec_rows = _dense_scores(
         " ".join(keywords) if keywords else query,
-        cfg=cfg, index=index, model=model,
+        cfg=cfg, index=index, model=model, k=vec_k,
     )[:vec_k]
 
     def _in_scope(pid: str) -> bool:

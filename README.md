@@ -12,11 +12,11 @@ tags: [索引, 说明书]
 | 文件夹 | 干什么 | 它的 README | 最后更新 |
 |---|---|---|---|
 | `日志/` | 研究日志（**流水账**，一天一篇）——**直辖，无子 README，根只索引目录** | — | 2026-10-21 |
-| `规划/` | 长期参考（导师建议 / 方向决策 / 评估结论 / **接口契约**）——**直辖，无子 README，根只索引目录** | — | 2026-10-21 |
-| `hotspot/` | 核心代码（L1–L6 + **L6.5 服务层 `api/`**，脚本速查见其 `_index`） | [[hotspot/_index\|打开]] | 2026-10-20 |
+| `规划/` | 长期参考（导师建议 / 方向决策 / 评估结论 / **接口契约**）——**直辖，无子 README，根只索引目录** | — | 2026-10-22 |
+| `hotspot/` | 核心代码（L1–L6 + **L6.5 服务层 `api/`**，脚本速查见其 `_index`） | [[hotspot/_index\|打开]] | 2026-10-22 |
 | `web/` | 新前端静态页（最小参考实现，原生 JS；账号系统待接） | — | 2026-10-18 |
-| `scripts/` | 验证/自检脚本 | [[scripts/_index\|打开]] | 2026-10-21 |
-| `eval/` | 评测集与评测脚本 | [[eval/_index\|打开]] | 2026-10-20 |
+| `scripts/` | 验证/自检脚本 | [[scripts/_index\|打开]] | 2026-10-22 |
+| `eval/` | 评测集与评测脚本 | [[eval/_index\|打开]] | 2026-10-22 |
 
 ## 2. 直辖文件夹
 
@@ -26,6 +26,7 @@ tags: [索引, 说明书]
 ## 3. 根目录的散件
 
 - `README.md` —— 本文件（索引树总目录）
+- `STATUS.md` —— 续接会话先读的短状态：当前目标、进度、验收命令
 - `AGENTS.md` —— **AI 会话唯一入口**：按任务查表 + 禁读清单 + 大文件读法 + 自检 + 红线
 - `CLAUDE.md` / `.cursorrules` —— 别的 AI 工具的入口别名，只指向 `AGENTS.md`（不重复内容）
 - `config.yaml` —— 唯一配置入口
@@ -52,7 +53,7 @@ tags: [索引, 说明书]
 | `hotspot/` | config / direction / llm / schema（主导包见其 §3 子包表） |
 | `hotspot/structure/` | embed / cluster / venue_matrix |
 | `hotspot/compress/` | cluster_card |
-| `hotspot/retrieval/` | router / rewrite / assemble / vector / hybrid |
+| `hotspot/retrieval/` | router / rewrite / assemble / vector / hybrid / coverage |
 | `hotspot/reasoning/` | answer / verify / evidence |
 | `hotspot/api/` | contract / engine / http（**前端唯一接口面**） |
 | `hotspot/ui/` | app / store |
@@ -68,14 +69,13 @@ tags: [索引, 说明书]
 | `workspace/` | **数据产物**（vectors/clusters/metrics/cards/ledger），可重建，不读 |
 | `hotspot/vendor/` | 第三方 vendored 副本（dasc，179k 字符）；`_out/` 是 LLM 缓存与审计日志，**2026-10-18 起不入库**（407 个 JSON，纯粹是搜索噪声） |
 | `.claude/skills/` / `.agents/skills/` | skill 源：`.claude` 是唯一源；`.agents` 是 Codex 兼容入口（当前工作区为 junction，新克隆见 `AGENTS.md` §9） |
-| `.zhanlu/` | skill 与配置，不属于项目文档 |
 | 导师库 `D:\大学编程学习\obsidian\rl_acdemical_paper` | 外部只读，四道闸，本项目不写它一个字 |
 
 > 代码目录（`hotspot/ scripts/ eval/`）不再列入「不在树上」——它们已登记进 §1 索引树，脚本速查在各 `_index.md`。
 
 ## 6. 维护本文件（树形回写）
 
-改任何 md 之后，回写子 README 与根 README，**终点是根（本文件）**——传播表见 `.zhanlu/skill/folder-readme` §三。
+改任何 md 之后，回写子 README 与根 README，**终点是根（本文件）**——传播表见 `.claude/skills/folder-readme/SKILL.md` §三。
 
 ---
 

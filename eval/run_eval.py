@@ -23,10 +23,12 @@ import hashlib
 import json
 import re
 import sys
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 import hotspot  # noqa: E402 —— 装闸① + 接线
 
 from hotspot.config import load_config, paths_from
@@ -182,19 +184,26 @@ def _trace_actions(meta: dict, metrics: dict, resp=None) -> list[dict]:
         "verify": {"metrics": metrics},
     }
     out = []
+    cursor = 0.0
     for name in _TRACE_STAGES:
         start = stages.get(f"{name}_start")
         end = stages.get(name)
         if start is None and end is None:
             continue
+        elapsed = None
+        if end is not None:
+            # Most stages emit once, so start == end. In that case stage cost is
+            # the interval since the previous completed stage.
+            if start is not None and float(end) > float(start) + 1e-9:
+                elapsed = round(float(end) - float(start), 3)
+            else:
+                elapsed = round(float(end) - cursor, 3)
+            cursor = float(end)
         out.append({
             "name": name,
             "params": {},
             "observation": observations.get(name, {}),
-            "elapsed": (
-                round(float(end) - float(start), 3)
-                if start is not None and end is not None else None
-            ),
+            "elapsed": elapsed,
         })
     return out
 
@@ -258,6 +267,43 @@ def _trace_error_record(*, item: dict, row: dict, cfg: dict, group: str) -> dict
             "metrics": {},
         },
     }
+
+
+def _eval_line(row: dict) -> str:
+    """One terminal line per question; full payload stays in the JSON file."""
+    meta = row.get("meta") or {}
+    retrieval = meta.get("retrieval") or {}
+    evidence = (
+        retrieval.get("evidence")
+        or meta.get("evidence")
+        or {}
+    )
+    coverage = retrieval.get("global_coverage") or {}
+    if not coverage:
+        sides = retrieval.get("sides") or []
+        for side in sides:
+            if isinstance(side, dict) and side.get("global_coverage"):
+                coverage = side["global_coverage"]
+                break
+    policy = retrieval.get("coverage_policy") or "-"
+    assigned = coverage.get("assigned_coverage")
+    dominant = coverage.get("dominant_cluster_id")
+    share = coverage.get("dominant_share")
+    coverage_text = (
+        f"{policy},assigned={assigned:.3f},dominant={dominant}@{share:.3f}"
+        if isinstance(assigned, (int, float)) and isinstance(share, (int, float))
+        else policy
+    )
+    parts = [
+        str(row.get("id") or "-"),
+        str(row.get("route") or "-"),
+        f"refused={bool(row.get('refused'))}",
+        f"evidence={evidence.get('decision') or '-'}",
+        f"coverage={coverage_text}",
+    ]
+    if row.get("error"):
+        parts.append(f"error={str(row['error'])[:100]}")
+    return " | ".join(parts)
 
 
 def _append_trace(path: Path, record: dict) -> None:
@@ -381,11 +427,7 @@ def main() -> int:
             )
         )
         _append_trace(trace_out, trace)
-        if row.get("error"):
-            print(f"[{a.group}/{item['id']}/{item['type']}] ERROR {row['error'][:120]}")
-        else:
-            print(f"[{a.group}/{item['id']}/{item['type']}] route={row['route']} "
-                  f"refused={row['refused']} m={row['metrics']}")
+        print(_eval_line(row))
 
     refused_ok = sum(1 for r in rows if r["type"] == "refuse"
                      and (r["refused"] or _is_refusal(r.get("answer") or "")))
@@ -421,8 +463,10 @@ def main() -> int:
         }
     payload = {"group": a.group, **summary, "rows": rows}
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n[{a.group}] 落盘：{out}")
-    print(json.dumps({k: v for k, v in summary.items()}, ensure_ascii=False, indent=2))
+    print(
+        f"summary | group={a.group} | n={summary['n']} | "
+        f"refuse_recall={summary['refuse_recall']} | out={out}"
+    )
     return 0
 
 

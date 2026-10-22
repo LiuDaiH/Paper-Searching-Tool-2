@@ -35,6 +35,7 @@ tags: [索引]
 | `hotspot/compress/` | L3 | [[hotspot/compress/_index\|打开]] |
 | `hotspot/retrieval/` | L4 | [[hotspot/retrieval/_index\|打开]] |
 | `hotspot/reasoning/` | L5 | [[hotspot/reasoning/_index\|打开]] |
+| `hotspot/harness/` | 内部工具成熟度（非公开） | [[hotspot/harness/_index\|打开]] |
 | `hotspot/ui/` | L6（Streamlit 适配） | [[hotspot/ui/_index\|打开]] |
 | `hotspot/api/` | L6.5 服务层（**前端唯一接口面**） | [[hotspot/api/_index\|打开]] |
 

@@ -1,5 +1,11 @@
 # 移动云杯 · 开发入口（AGENTS.md）
 
+> **续接会话先读 `STATUS.md`**（只保留当前目标/进度/下一条命令），再查下面的任务表。
+> 大改前先写清“只改文件 / 只读函数 / 验收命令”；未写清就不要扩展探索。
+> 命令固定用 PowerShell 原生 cmdlet，不同时混用 bash/cmd 的引号与转义方式。
+> 日常自检用 `python scripts/check_api.py --quiet`；Trace 先用
+> `python scripts/summarize_trace.py <jsonl>` 汇总，不整段读原文。
+
 > **给 AI 的第一句话：这个仓库自带地图。先查下面的表，只读表里列的文件。**
 > 不要为了"找代码"启动子代理、不要 `grep -r` 整个仓库、不要整篇读 `engine.py`。
 > 90% 的任务 2–4 个文件就够，读完就停。
@@ -23,7 +29,7 @@
 | 改引用校验（防幻觉） | `hotspot/reasoning/_index.md` → `verify.py` | 四态 `supported/unsupported/missing_id/no_citation` **不许合并** |
 | 跑数据 / 评测 | `scripts/_index.md`、`eval/_index.md` → `eval/run_eval.py` | 不要读 `workspace/` 产物 |
 | 排查「拒答 / 没结果」 | `hotspot/api/engine.py` 的 `_ask_legacy`（注意 `has_cn` 分支） → `direction.select` → `config.yaml` 的 `retrieval` | 先看 `refuse_reason` 与 `warnings`，别猜 |
-| 写周报 / 日志 / 回写索引 | `.zhanlu/skill/research-log`、`folder-readme` → `日志/` 最新一篇 | 只读最近 1 篇，不要通读历史 |
+| 写周报 / 日志 / 回写索引 | `.claude/skills/research-log`、`.claude/skills/folder-readme` → `日志/` 最新一篇 | 只读最近 1 篇，不要通读历史 |
 
 ## 2. 不要读（省 token，而且会误导判断）
 
@@ -74,7 +80,7 @@ git ls-files | grep -i "检索\|retrieval"
 ## 5. 改完必须跑（30 秒，离线）
 
 ```bash
-python scripts/check_api.py              # 接口契约 / 参数 / HTTP / SSE
+python scripts/check_api.py --quiet      # 只报失败项和总数
 python scripts/check_tree.py --vault .   # 索引树：悬空链接 / 孤儿 md / 脚本速查
 ```
 

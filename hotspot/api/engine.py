@@ -217,6 +217,7 @@ class Engine:
             "graph": bool((self._cfg.get("streit_garg") or {}).get("enabled", True)),
             "rlrag": bool((self._cfg.get("rlrag") or {}).get("enabled", False)),
             "followup_papers": True,              # 追问会把前文引用论文并进上下文
+            "coverage_observation": True,          # meta.retrieval.global_coverage
             "sources": list(SOURCES),
             "contract_version": CONTRACT_VERSION,
         }
@@ -684,7 +685,7 @@ class Engine:
             "topic_en": side,
             "core_terms": [side],
             "core_concepts": [{
-                "name": str((concept or {}).get("name") or side),
+                "name": side,
                 "aliases": aliases,
                 "required": True,
                 "weight": 1.0,
@@ -722,6 +723,8 @@ class Engine:
                 continue
             value = str(requirement.get("value") or "").strip()
             low = value.lower()
+            exact_side = False
+            matched_names: list[str] = []
             for concept in concepts:
                 name = str(concept.get("name") or "")
                 if not name or name in metric_names:
@@ -730,8 +733,14 @@ class Engine:
                     name,
                     *[str(x) for x in (concept.get("aliases") or []) if str(x).strip()],
                 ]
+                if low in {alias.lower() for alias in aliases}:
+                    exact_side = True
                 if any(alias.lower() in low for alias in aliases):
-                    sides.append(name)
+                    matched_names.append(name)
+            if exact_side:
+                sides.append(value)
+            else:
+                sides.extend(matched_names)
         if len(sides) < 2:
             sides = [
                 str(item.get("name") or "")
@@ -830,6 +839,7 @@ class Engine:
             "retrieval": {
                 "evidence": requirement_evidence.to_dict(),
                 "sides": [item.get("retrieval") or {} for item in side_results],
+                "coverage_policy": "per_side",
             },
         }
         return self._answer_from_evidence(
@@ -897,7 +907,10 @@ class Engine:
         merged_res = {
             "query_hits": ids,
             "retrieval_notes": list(dict.fromkeys(notes)),
-            "retrieval": {"sub_questions": results},
+            "retrieval": {
+                "sub_questions": results,
+                "coverage_policy": "per_subquestion",
+            },
         }
         return self._answer_from_evidence(
             req, parsed, merged_res, cfg=cfg, c=c, client=client, emit=emit,
@@ -994,6 +1007,7 @@ class Engine:
             "retrieval": {
                 "common_evidence_ids": common_ids,
                 "sides": [item.get("retrieval") or {} for item in side_results],
+                "coverage_policy": "dual_concept",
             },
         }
         return self._answer_from_evidence(

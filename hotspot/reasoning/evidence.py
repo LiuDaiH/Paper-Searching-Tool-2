@@ -16,6 +16,21 @@ __all__ = ["EvidenceResult", "evaluate"]
 
 _WORD = re.compile(r"[a-z0-9]+")
 _SENT = re.compile(r"(?<=[.!?])\s+|\n+")
+_REQUIRED_COVERAGE = 2 / 3
+_RELEVANCE_GENERIC = {
+    "a", "an", "and", "approach", "approaches", "area", "areas",
+    "algorithm", "algorithms", "application", "applications", "based",
+    "challenge", "challenges", "control", "core", "current", "data",
+    "development", "direction", "directions", "framework", "hot", "hotspot",
+    "hotspots", "how", "idea", "ideas", "improvement", "improvements",
+    "in", "innovation", "innovations", "latest", "learning", "main",
+    "method", "methods", "model", "models", "network", "networks", "new",
+    "of", "on", "optimization", "paper", "papers", "performance", "popular",
+    "prediction", "progress", "recent", "recently", "research", "researches",
+    "segmentation", "study", "system", "systems", "the", "to", "topic",
+    "topics", "trend", "trends", "what", "which", "with", "work", "works",
+    "year", "years",
+}
 
 
 def _tokens(text: str) -> set[str]:
@@ -47,6 +62,11 @@ class EvidenceResult:
     score: float = 0.0
     evidence_id: str = ""
     requirement_results: tuple[dict[str, Any], ...] = ()
+    required_coverage: float = 0.0
+    domain_coverage: float = 0.0
+    matched_domain_terms: tuple[str, ...] = ()
+    domain_support_ids: tuple[str, ...] = ()
+    domain_gate_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,6 +79,11 @@ class EvidenceResult:
             "score": self.score,
             "evidence_id": self.evidence_id,
             "requirement_results": [dict(r) for r in self.requirement_results],
+            "required_coverage": self.required_coverage,
+            "domain_coverage": self.domain_coverage,
+            "matched_domain_terms": list(self.matched_domain_terms),
+            "domain_support_ids": list(self.domain_support_ids),
+            "domain_gate_reason": self.domain_gate_reason,
         }
 
 
@@ -123,6 +148,116 @@ def _evaluate_requirements(
     return out
 
 
+def _anchor_belongs(anchor: str, concept: dict) -> bool:
+    """Return whether an anchor names this concept or one of its versions."""
+    needle = str(anchor or "").strip().casefold()
+    if not needle:
+        return False
+    names = [
+        str(concept.get("name") or ""),
+        *[str(x) for x in (concept.get("aliases") or []) if str(x).strip()],
+    ]
+    for name in names:
+        key = name.casefold()
+        if key == needle:
+            return True
+        # Dreamer -> DreamerV2/DreamerV3 are alternatives of one series.
+        if key.startswith(needle):
+            suffix = key[len(needle):].lstrip(" _-")
+            if suffix.startswith("v") and suffix[1:].isdigit():
+                return True
+    return False
+
+
+def _anchor_groups(anchors: list[str], concepts: list[dict]) -> list[list[str]]:
+    """Group version-like anchors under their shared core concept."""
+    groups: list[list[str]] = []
+    grouped: set[str] = set()
+    by_version_base: dict[str, list[str]] = {}
+    for anchor in anchors:
+        base = re.sub(r"[ _-]?v?\d+$", "", anchor.casefold()).strip()
+        if base:
+            by_version_base.setdefault(base, []).append(anchor)
+    for members in by_version_base.values():
+        if len(members) > 1:
+            groups.append(members)
+            grouped.update(members)
+    for concept in concepts:
+        members = [
+            a for a in anchors
+            if a not in grouped and _anchor_belongs(a, concept)
+        ]
+        if members:
+            groups.append(members)
+            grouped.update(members)
+    groups.extend([a] for a in anchors if a not in grouped)
+    return groups
+
+
+def _domain_groups(plan: dict, concepts: list[dict]) -> tuple[list[dict], str]:
+    """Build hard-gate groups from domain-bearing query terms.
+
+    Generic research words alone are not evidence that a question belongs to
+    this corpus. Aliases remain alternatives within one group, so paraphrases
+    do not have to match verbatim.
+    """
+    raw_terms = [
+        str(x).strip() for x in (plan.get("core_terms") or [])
+        if str(x).strip()
+    ]
+    if not raw_terms:
+        raw_terms = [
+            str(c.get("name") or "").strip() for c in concepts
+            if str(c.get("name") or "").strip()
+        ]
+    if not raw_terms:
+        raw_terms = [
+            str(x).strip() for x in (plan.get("keywords") or [])
+            if str(x).strip()
+        ]
+
+    groups: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    had_ascii = False
+    for term in raw_terms:
+        aliases = [term]
+        needle = term.casefold()
+        for concept in concepts:
+            names = [
+                str(concept.get("name") or ""),
+                *[str(x) for x in (concept.get("aliases") or []) if str(x).strip()],
+            ]
+            if needle in {name.casefold() for name in names if name}:
+                aliases.extend(name for name in names if name)
+                break
+        aliases = list(dict.fromkeys(aliases))
+        ascii_words = {
+            w for alias in aliases for w in _WORD.findall(alias.lower())
+        }
+        if ascii_words:
+            had_ascii = True
+        significant = {
+            w for w in ascii_words
+            if len(w) > 1 and not w.isdigit() and w not in _RELEVANCE_GENERIC
+        }
+        if not significant:
+            continue
+        key = "|".join(sorted(significant))
+        if key in seen:
+            continue
+        seen.add(key)
+        groups.append({
+            "name": term,
+            "aliases": aliases,
+            "significant": significant,
+        })
+    if groups:
+        return groups, "ok"
+    if raw_terms and had_ascii:
+        return [], "generic_only"
+    return [], "no_ascii_scope_terms"
+
+
 def evaluate(
     corpus,
     hits,
@@ -143,9 +278,6 @@ def evaluate(
     anchors = [str(a) for a in (plan.get("anchors") or []) if str(a).strip()]
     intent = str(plan.get("intent") or "fact")
     answer_mode = str(plan.get("answer_mode") or "")
-    if not concepts and not anchors:
-        return EvidenceResult("answer", "no structured concept gate",
-                              score=0.0)
 
     candidates = []
     for h in list(hits or [])[:top_n]:
@@ -209,8 +341,35 @@ def evaluate(
     matched_union = set().union(*(set(c["matched"]) for c in candidates))
     anchors_union = set().union(*(set(c["matched_anchors"]) for c in candidates))
     required = {str(c["name"]) for c in concepts if c.get("required")}
+    required_coverage = len(required & matched_union) / max(len(required), 1)
+    domain_groups, domain_gate_reason = _domain_groups(plan, concepts)
+    matched_domain_terms: list[str] = []
+    domain_support_ids = []
+    for candidate in candidates:
+        matches = [
+            str(group["name"]) for group in domain_groups
+            if any(_phrase_match(candidate["text"], alias)
+                   for alias in group["aliases"])
+        ]
+        candidate["domain_matches"] = matches
+        if matches:
+            domain_support_ids.append(str(candidate["paper_id"]))
+            matched_domain_terms.extend(matches)
+    matched_domain_terms = list(dict.fromkeys(matched_domain_terms))
+    domain_support_ids = list(dict.fromkeys(domain_support_ids))
+    domain_coverage = (
+        len(matched_domain_terms) / len(domain_groups)
+        if domain_groups else 0.0
+    )
     snippet_ok = bool(best["snippet"].strip())
-    result_kw = {"requirement_results": tuple(requirement_results)}
+    result_kw = {
+        "requirement_results": tuple(requirement_results),
+        "required_coverage": required_coverage,
+        "domain_coverage": domain_coverage,
+        "matched_domain_terms": tuple(matched_domain_terms),
+        "domain_support_ids": tuple(domain_support_ids),
+        "domain_gate_reason": domain_gate_reason,
+    }
 
     # 语义需求常用于组织答案和提示缺失项；只有对比对象是硬约束。
     # 方法/指标名称常被论文改写，逐字硬门控会造成大面积误拒。
@@ -238,28 +397,66 @@ def evaluate(
             evidence_id=best_id, **result_kw,
         )
 
-    missing_anchors = [a for a in anchors if a not in anchors_union]
-    if anchors and missing_anchors:
+    anchor_groups = _anchor_groups(anchors, concepts)
+    missing_anchor_groups = [
+        group for group in anchor_groups
+        if not any(anchor in anchors_union for anchor in group)
+    ]
+    if anchors and missing_anchor_groups:
         return EvidenceResult(
             "insufficient_evidence",
-            f"缺少 anchor 证据：{missing_anchors}",
+            f"缺少 anchor 证据：{missing_anchor_groups}",
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
             evidence_id=best_id, **result_kw,
         )
+    anchors_satisfied = bool(anchors) and not missing_anchor_groups
+    if domain_gate_reason == "generic_only" and not anchors_satisfied:
+        return EvidenceResult(
+            "clarify", "问题只有泛化研究词，缺少可验证的核心领域词",
+            tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
+            (best["snippet"],) if snippet_ok else (),
+            best["coverage"], best["score"],
+            evidence_id=best_id, **result_kw,
+        )
+    if domain_groups and not anchors_satisfied:
+        required_domain = max(1, (2 * len(domain_groups) + 2) // 3)
+        min_domain_papers = (
+            min(2, len(candidates))
+            if (answer_mode == "global_trend"
+                or intent in {"trend", "worth", "newfield"})
+            else 1
+        )
+        if (len(matched_domain_terms) < required_domain
+                or len(domain_support_ids) < min_domain_papers):
+            return EvidenceResult(
+                "out_of_scope",
+                "候选证据未覆盖问题的核心领域"
+                f"（{len(matched_domain_terms)}/{len(domain_groups)}，"
+                f"支持论文 {len(domain_support_ids)} 篇）",
+                tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
+                (best["snippet"],) if snippet_ok else (),
+                best["coverage"], best["score"],
+                evidence_id=best_id, **result_kw,
+            )
     # An explicit anchor is the hard entity constraint. Without an anchor,
     # required concepts remain mandatory.
-    if required and not anchors and not required <= matched_union:
+    required_hits = required & matched_union
+    if (required and not anchors and not required <= matched_union
+            and not (required_coverage >= _REQUIRED_COVERAGE
+                     and len(required_hits) >= 2)):
         return EvidenceResult(
             "insufficient_evidence",
-            f"缺少核心概念：{sorted(required - matched_union)}",
+            f"缺少核心概念：{sorted(required - matched_union)}"
+            f"（覆盖率 {required_coverage:.2f}）",
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
             evidence_id=best_id, **result_kw,
         )
-    if intent in {"fact", "compare"} and not anchors and best["coverage"] < 0.5:
+    if (intent in {"fact", "compare"} and required and not anchors
+            and best["coverage"] < 0.5 and required_coverage < 0.5):
         return EvidenceResult(
             "insufficient_evidence",
             "候选只覆盖少量核心概念",

@@ -19,19 +19,21 @@ import json
 import math
 import sys
 import time
+import warnings
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 import hotspot  # noqa: E402,F401
 from hotspot.api.engine import Engine  # noqa: E402
 from hotspot.config import load_config, paths_from  # noqa: E402
 from hotspot.corpus import open_corpus  # noqa: E402
+from hotspot.harness.tools import paper_search  # noqa: E402
 from hotspot.retrieval.hybrid import (  # noqa: E402
     _bm25_scores,
     _dense_scores,
-    retrieve,
 )
 
 
@@ -73,29 +75,40 @@ def _load(cfg):
 def evaluate(items, cfg, *, mode: str = "hybrid", top_k: int = 50) -> dict:
     corpus, index, bm25 = _load(cfg)
     bm, bm_ids = bm25
+    if mode in {"hybrid", "vector"}:
+        from hotspot.structure.embed import embed_query
+
+        embed_query(
+            "warmup",
+            model=str((cfg.get("embed") or {}).get("model") or "BAAI/bge-m3"),
+        )
     rows = []
     for item in items:
-        q = item["query"]
+        q = str(item.get("search_query") or item["query"])
+        keywords = [str(x) for x in (item.get("keywords") or [q]) if str(x).strip()]
         t0 = time.perf_counter()
         stats: dict = {}
         if mode == "bm25":
-            rows_bm = _bm25_scores(bm, bm_ids, [q], top_k)
+            rows_bm = _bm25_scores(bm, bm_ids, keywords, top_k)
             ids = [pid for pid, _ in rows_bm]
             notes = []
         elif mode == "vector":
             rows_vec = _dense_scores(
-                q, cfg=cfg, index=index,
+                " ".join(keywords), cfg=cfg, index=index,
                 model=str((cfg.get("embed") or {}).get("model") or "BAAI/bge-m3"),
             )
             ids = [pid for pid, _ in rows_vec[:top_k]]
             notes = []
         else:
-            hr = retrieve(
-                corpus, q, cfg=cfg, bm25=bm25, index=index, top_k=top_k
+            obs = paper_search(
+                corpus, q, cfg=cfg, bm25=bm25, index=index, top_k=top_k,
+                keywords=keywords,
             )
-            ids = [h.paper_id for h in hr.hits]
-            notes = hr.notes
-            stats = hr.stats
+            ids = list(obs.ids)
+            notes = list((obs.data or {}).get("notes") or [])
+            stats = dict((obs.data or {}).get("stats") or {})
+            if obs.error:
+                notes.append(f"{obs.error.code}: {obs.error.message}")
         elapsed = round(time.perf_counter() - t0, 3)
         rel = set(item.get("relevant_ids") or [])
         m = _metrics(ids, rel, 10) if rel else {
@@ -104,12 +117,13 @@ def evaluate(items, cfg, *, mode: str = "hybrid", top_k: int = 50) -> dict:
         m20 = _metrics(ids, rel, 20) if rel else m
         m50 = _metrics(ids, rel, 50) if rel else m
         rows.append({
-            "id": item["id"], "query": q, "mode": mode,
+            "id": item["id"], "query": item["query"],
+            "search_query": q, "keywords": keywords, "mode": mode,
             "returned": len(ids), "empty": not ids,
             "answerable": stats.get("answerable") if mode == "hybrid" else None,
             "query_coverage": stats.get("query_coverage") if mode == "hybrid" else None,
             "expect_refuse": bool(item.get("expect_refuse", False)),
-            "top_ids": ids[:10],
+            "top_ids": ids[:50],
             "metrics@10": m, "metrics@20": m20, "metrics@50": m50,
             "elapsed_s": elapsed, "notes": notes,
         })

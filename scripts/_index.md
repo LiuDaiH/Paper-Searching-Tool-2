@@ -33,6 +33,9 @@ tags: [索引]
 - `run_ui.py` —— Streamlit UI 入口（`streamlit run scripts/run_ui.py`）。
 - `run_server.py` —— **HTTP 服务入口**（新前端用）：`python scripts/run_server.py --port 8000 --web web`，只暴露 `/api/meta`、`/api/ask`。
 - `check_api.py` —— **接口自检**（离线秒级）：契约往返 + 参数白名单 + HTTP/SSE 冒烟，用 StubEngine 不碰语料。
+- `check_tools.py` —— 内部工具 golden tests：contract、evidence gate、verify 四态、fetch/私有 adapter。
+- `audit_coverage.py` —— 全库粗主题覆盖审计：稳定归属、最近质心、margin、簇规模；不调用 LLM。
+- `summarize_trace.py` —— 只读 Trace JSONL，汇总 route、拒答、证据门、覆盖策略和阶段延迟；不输出问题/答案原文。
 - `run_query.py` —— 意图驱动聚类端到端实测（parse_query → 检索聚类 → 命名 → 回答）。
 - `run_deps.py` —— 依赖图续跑抽取 CLI（逐篇落盘被引边，可续跑）。
 - `agg_refs.py` —— 聚合依赖图：`refs/*.json` × `srcmap/*.json` → `workspace/depgraph/paper_refs.json`（paper→被引 arXiv 双向，供 `co_cite`）。

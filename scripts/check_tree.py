@@ -9,7 +9,7 @@
 
 本项目的两张「不在树上」的表：
   · 数据文件  workspace/           —— 向量/聚类/metrics/cards/ledger，产物、可重建，不读
-  · skill 源  .zhanlu/ 、科研设施/research-log/ —— 是 skill 与模板，不是树的文档
+  · skill 源  .claude/ 、科研设施/research-log/ —— 是 skill 与模板，不是树的文档
   · 代码      hotspot/scripts/eval —— 是代码 *.py，不在树的 md 扫描范围里
 
 用法（在 `移动云杯/` 下）：
@@ -39,7 +39,7 @@ CONFIG = {
     # 规则按**连续路径段**匹配：`workspace` 命中任意层级下的 `workspace/`，
     # `research-log` 命中 `科研设施/research-log/`（skill 源）。
     "data_rules": [
-        ".git", ".zhanlu", "__pycache__", ".venv", "node_modules",
+        ".git", "__pycache__", ".venv", "node_modules",
         ".agents", ".claude",  # skill 部署目录，不是项目文档树
         "workspace",       # 数据产物：向量/聚类/metrics/cards/ledger，可重建，不读
         "research-log",    # skill 源（照搬自 /日志 skill），是模板不是树的文档

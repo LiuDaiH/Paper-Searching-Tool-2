@@ -1,0 +1,29 @@
+{
+  "allowed_ids": ["p1", "p2"],
+  "evidence": {
+    "p1": "Direct Preference Optimization removes an explicit reward model.",
+    "p2": "RLOO reduces variance using a leave-one-out baseline."
+  },
+  "claims": [
+    {
+      "text": "This sentence has no citation.",
+      "cited_ids": [],
+      "expected_status": "no_citation"
+    },
+    {
+      "text": "DPO removes an explicit reward model [P:missing].",
+      "cited_ids": ["missing"],
+      "expected_status": "missing_id"
+    },
+    {
+      "text": "DPO removes an explicit reward model [P:p1].",
+      "cited_ids": ["p1"],
+      "expected_status": "supported"
+    },
+    {
+      "text": "DPO guarantees zero hallucination [P:p1].",
+      "cited_ids": ["p1"],
+      "expected_status": "unsupported"
+    }
+  ]
+}

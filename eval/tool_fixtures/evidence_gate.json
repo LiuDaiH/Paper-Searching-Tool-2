@@ -1,0 +1,84 @@
+{
+  "papers": {
+    "p_answer": "Dreamer world model uses latent dynamics and actor-critic optimization",
+    "p_optional": "Dreamer world model learns compact latent representations",
+    "p_traffic_1": "Traffic signal control with reinforcement learning reduces congestion",
+    "p_traffic_2": "Urban traffic signal control is optimized by reinforcement learning",
+    "p_medical_1": "Deep segmentation networks for natural-image benchmarks",
+    "p_medical_2": "Clinical benchmarks for image analysis",
+    "p_noise": "Policy optimization improves sample efficiency"
+  },
+  "cases": [
+    {
+      "id": "version_anchor",
+      "hits": ["p_answer"],
+      "expected_decision": "answer",
+      "plan": {
+        "answer_mode": "paper_fact",
+        "intent": "fact",
+        "core_terms": ["Dreamer world model"],
+        "core_concepts": [],
+        "anchors": ["Dreamer", "DreamerV2", "DreamerV3"],
+        "requirements": []
+      }
+    },
+    {
+      "id": "optional_concept_with_topic",
+      "hits": ["p_optional"],
+      "expected_decision": "answer",
+      "plan": {
+        "answer_mode": "global_trend",
+        "intent": "trend",
+        "core_terms": ["Dreamer world model"],
+        "core_concepts": [
+          {
+            "name": "optional topic label",
+            "aliases": ["optional topic label"],
+            "required": false
+          }
+        ],
+        "anchors": [],
+        "requirements": []
+      }
+    },
+    {
+      "id": "real_cross_domain",
+      "hits": ["p_traffic_1", "p_traffic_2"],
+      "expected_decision": "answer",
+      "plan": {
+        "answer_mode": "global_trend",
+        "intent": "trend",
+        "core_terms": ["traffic signal control", "reinforcement learning"],
+        "core_concepts": [],
+        "anchors": [],
+        "requirements": []
+      }
+    },
+    {
+      "id": "unsupported_domain",
+      "hits": ["p_medical_1", "p_medical_2"],
+      "expected_decision": "out_of_scope",
+      "plan": {
+        "answer_mode": "global_trend",
+        "intent": "trend",
+        "core_terms": ["CT segmentation", "medical imaging"],
+        "core_concepts": [],
+        "anchors": [],
+        "requirements": []
+      }
+    },
+    {
+      "id": "generic_only",
+      "hits": ["p_noise"],
+      "expected_decision": "clarify",
+      "plan": {
+        "answer_mode": "global_trend",
+        "intent": "trend",
+        "core_terms": ["optimization", "control"],
+        "core_concepts": [],
+        "anchors": [],
+        "requirements": []
+      }
+    }
+  ]
+}

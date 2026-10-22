@@ -31,12 +31,13 @@ L4 检索层：**规则兜底 + LLM 增强**路由 + 在线查询改写 + 上下
 - `assemble.py` —— L4 装配上下文：固定前缀命中 DeepSeek 缓存，引用规范写死。
 - `vector.py` —— L4 numpy 暴力余弦检索（不引向量库）。
 - `hybrid.py` —— L4 混合检索：BM25 + dense 的 RRF 融合、可选 cross-encoder rerank、MMR 多样性；失败回退 RRF。
+- `coverage.py` —— 全局粗主题覆盖：稳定簇成员 + 最近质心兜底、趋势题粗到细候选选择、覆盖观测。
 
 （`__init__.py` 是包脚手架，不单独登记。）
 
 ## 4. 建议阅读顺序
 
-1. `router.py` → `rewrite.py` → `assemble.py` → `vector.py`
+1. `router.py` → `rewrite.py` → `assemble.py` → `hybrid.py` → `coverage.py` → `vector.py`
 
 ## 5. 相关
 

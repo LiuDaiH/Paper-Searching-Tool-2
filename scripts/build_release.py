@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEST = Path(r"G:\work!")
 STAGE = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(r"C:\Users\Admin\AppData\Local\Temp\zhanlu\release_stage")
 
-EXCLUDE_PARTS = {"__pycache__", ".git", ".zhanlu", ".playwright-mcp"}
+EXCLUDE_PARTS = {"__pycache__", ".git", ".playwright-mcp"}
 EXCLUDE_SUFFIX = {".pyc", ".pyo", ".log", ".npz"}
 
 # 服务端源码含的顶层项
