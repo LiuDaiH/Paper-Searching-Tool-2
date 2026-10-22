@@ -11,6 +11,7 @@ tags: [索引]
 ## 2. 当前工作状态
 
 - `lance_store.py` 是唯一检索后端边界。
+- `topic_store.py` 只读取离线 topic snapshot，不在线聚类。
 - 索引从已有 1024 维 BGE-M3 分片构建，不重新编码全库。
 - 工具层不直接访问 LanceDB。
 
@@ -22,6 +23,7 @@ tags: [索引]
 ## 脚本速查
 
 - `lance_store.py` —— LanceDB 构建、论文读取、vector+FTS 混合召回。
+- `topic_store.py` —— 读取离线 cluster metrics，提供 topic snapshot 查询。
 
 （`__init__.py` 是包脚手架，不单独登记。）
 

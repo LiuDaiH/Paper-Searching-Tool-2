@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 
 from ..api.contract import Citation, Verdict as ContractVerdict
-from ..core.models import AgentAnswer
+from ..core.models import AgentAnswer, AnswerClaim
 from ..llm import make_client
 from ..schema import Claim
 from .verify import verify_claims
@@ -128,3 +128,34 @@ def make_citations(corpus, citation_ids: list[str] | tuple[str, ...]) -> list[Ci
             url=getattr(paper, "url", "") or "",
         ))
     return out
+
+
+def extractive_fallback(
+    corpus,
+    fetched_ids: list[str] | tuple[str, ...],
+    *,
+    limit: int = 3,
+) -> AgentAnswer:
+    """Create a minimal grounded answer when the model cannot emit valid claims."""
+    claims = []
+    for pid in dict.fromkeys(str(x) for x in fetched_ids):
+        paper = corpus.get(pid)
+        if paper is None:
+            continue
+        snippet = re.sub(r"\s+", " ", paper.abstract or paper.title or "").strip()
+        if not snippet:
+            continue
+        if len(snippet) > 260:
+            snippet = snippet[:260].rsplit(" ", 1)[0] + "…"
+        claims.append(AnswerClaim(
+            text=f"《{paper.title or pid}》指出：{snippet}",
+            evidence_ids=[pid],
+        ))
+        if len(claims) >= limit:
+            break
+    if not claims:
+        return AgentAnswer(no_answer_reason="没取到可抽取的论文证据")
+    return AgentAnswer(
+        claims=claims,
+        limitations=["模型未产出合法结构化 claim，已使用抽取式证据降级"],
+    )

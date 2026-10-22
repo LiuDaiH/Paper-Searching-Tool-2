@@ -36,6 +36,32 @@ def _coverage(retrieval: dict) -> dict:
 
 def _record(trace: dict) -> dict:
     outcome = trace.get("outcome") or {}
+    if str(trace.get("trace_version")) == "2":
+        verdicts = outcome.get("verdicts") or []
+        statuses = Counter(
+            str(item.get("status") or "") for item in verdicts
+            if isinstance(item, dict)
+        )
+        tools = Counter(
+            str(action.get("tool") or action.get("name") or "")
+            for action in (trace.get("actions") or [])
+            if isinstance(action, dict)
+        )
+        return {
+            "id": str(trace.get("request_id") or ""),
+            "type": "agent",
+            "route": str(outcome.get("route") or ""),
+            "refused": bool(outcome.get("refused")),
+            "evidence": str(dict(statuses)),
+            "domain_gate": "",
+            "policy": "",
+            "assigned": None,
+            "dominant": None,
+            "share": None,
+            "error": bool(outcome.get("error")),
+            "tools": dict(tools),
+            "latency": {"total": outcome.get("elapsed_s")},
+        }
     retrieval, observation_evidence = _retrieve(trace)
     evidence = retrieval.get("evidence") or observation_evidence or {}
     coverage = _coverage(retrieval)
@@ -52,6 +78,7 @@ def _record(trace: dict) -> dict:
         "dominant": coverage.get("dominant_cluster_id"),
         "share": coverage.get("dominant_share"),
         "error": bool(outcome.get("error")),
+        "tools": {},
         "latency": {
             str(action.get("name")): action.get("elapsed")
             for action in actions
@@ -71,6 +98,10 @@ def _group(rows: list[dict]) -> dict:
         "routes": dict(Counter(row["route"] or "-" for row in rows)),
         "refused": sum(row["refused"] for row in rows),
         "errors": sum(row["error"] for row in rows),
+        "tools": dict(sum(
+            (Counter(row.get("tools") or {}) for row in rows),
+            Counter(),
+        )),
         "evidence": dict(Counter(row["evidence"] or "-" for row in rows)),
         "domain_gate": dict(Counter(row["domain_gate"] or "-" for row in rows)),
         "coverage_policy": dict(Counter(row["policy"] or "-" for row in rows)),
@@ -80,7 +111,7 @@ def _group(rows: list[dict]) -> dict:
             stage: _avg(
                 row["latency"].get(stage) for row in rows
             )
-            for stage in ("parse", "retrieve", "name", "answer", "verify")
+            for stage in ("parse", "retrieve", "name", "answer", "verify", "total")
         },
     }
 
@@ -124,7 +155,7 @@ def main() -> int:
     print(
         f"trace | n={overall['n']} invalid={overall['invalid_lines']} "
         f"routes={overall['routes']} refused={overall['refused']} "
-        f"errors={overall['errors']}"
+        f"errors={overall['errors']} tools={overall['tools']}"
     )
     print(
         f"evidence | decisions={overall['evidence']} "

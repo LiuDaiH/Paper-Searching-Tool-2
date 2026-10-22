@@ -44,3 +44,26 @@ class AgentAnswer(BaseModel):
     claims: list[AnswerClaim] = Field(default_factory=list)
     no_answer_reason: str = ""
     limitations: list[str] = Field(default_factory=list)
+
+
+class ScopeDecision(BaseModel):
+    in_scope: bool
+    domain: str = ""
+    reason: str = ""
+
+
+class TopicHit(BaseModel):
+    cluster_id: int
+    label: str
+    size: int
+    spread_state: str
+    venue_counts: dict[str, int] = Field(default_factory=dict)
+    year_counts: dict[int, int] = Field(default_factory=dict)
+    representative_id: str = ""
+    representative_title: str = ""
+    score: float = 0.0
+
+
+class TopicOverview(BaseModel):
+    query: str
+    topics: list[TopicHit] = Field(default_factory=list)

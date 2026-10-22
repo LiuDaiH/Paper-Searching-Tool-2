@@ -2,5 +2,6 @@
 
 from .papers import fetch_papers
 from .search import search_papers
+from .topics import get_topic_overview
 
-__all__ = ["fetch_papers", "search_papers"]
+__all__ = ["fetch_papers", "get_topic_overview", "search_papers"]

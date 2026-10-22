@@ -40,10 +40,18 @@ def _where(filters: SearchFilters | None) -> str:
 class LancePaperStore:
     """One stable retrieval interface for tools; no answer-mode policy."""
 
-    def __init__(self, cfg: dict | None = None, *, db_path: Path | None = None):
+    def __init__(
+        self,
+        cfg: dict | None = None,
+        *,
+        source: str = "meeting",
+        db_path: Path | None = None,
+    ):
         self.cfg = cfg or load_config()
+        self.source = source
         if db_path is None:
-            db_path = paths_from(self.cfg)["workspace"] / "lance"
+            dirname = "lance_arxiv" if source == "arxiv" else "lance"
+            db_path = paths_from(self.cfg)["workspace"] / dirname
         self.db_path = Path(db_path)
 
     @property
@@ -155,11 +163,13 @@ def build_lance_index(
     *,
     out_dir: Path | None = None,
     limit: int | None = None,
+    source: str = "meeting",
 ) -> dict[str, Any]:
     """Offline full/small build from existing BGE-M3 vector shards."""
     cfg = cfg or load_config()
     ws = paths_from(cfg)["workspace"]
-    X, ids = load_all(ws / "vectors")
+    vector_dir = ws / ("arxiv_vectors" if source == "arxiv" else "vectors")
+    X, ids = load_all(vector_dir)
     if limit is not None:
         X, ids = X[:limit], ids[:limit]
     X = X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
@@ -170,7 +180,9 @@ def build_lance_index(
     row_map = [vector_row[pid] for pid in kept]
     X = X[row_map]
 
-    out = Path(out_dir) if out_dir else ws / "lance"
+    out = Path(out_dir) if out_dir else ws / (
+        "lance_arxiv" if source == "arxiv" else "lance"
+    )
     out.mkdir(parents=True, exist_ok=True)
     db = lancedb.connect(str(out))
     vector_type = pa.list_(pa.float32(), int(X.shape[1]))
@@ -203,6 +215,7 @@ def build_lance_index(
         "embedding_model": str(
             (cfg.get("embed") or {}).get("model") or "BAAI/bge-m3"
         ),
+        "source": source,
     }
     (out / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),

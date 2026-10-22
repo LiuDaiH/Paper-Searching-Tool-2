@@ -24,6 +24,7 @@ tags: [索引]
 - `check_tree.py` —— 索引树与脚本速查自检。
 - `check_api.py` —— 契约与 HTTP/SSE 接口自检。
 - `check_tools_v2.py` —— LanceDB 标题探测与论文读取工具离线自检。
+- `run_v2_eval.py` —— v2 离线工具指标或可选真实 agent 端到端回归。
 - `build_lance_index.py` —— 从现有 BGE-M3 向量分片构建 LanceDB 论文索引。
 - `run_server.py` —— HTTP 服务入口。
 - `run_ui.py` —— Streamlit 入口。

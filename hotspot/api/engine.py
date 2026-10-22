@@ -16,7 +16,12 @@ from ..agent.runtime import run_research_agent
 from ..config import load_config
 from ..corpus import open_arxiv_corpus, open_corpus
 from ..index.lance_store import LancePaperStore
-from ..reasoning.grounding import make_citations, verify_and_render
+from ..observability.trace import append_trace, sanitize_answer_text
+from ..reasoning.grounding import (
+    extractive_fallback,
+    make_citations,
+    verify_and_render,
+)
 from .contract import (
     E_CORPUS_UNAVAILABLE,
     E_INTERNAL,
@@ -94,8 +99,51 @@ class Engine:
         started = time.perf_counter()
         cfg = copy.deepcopy(self._cfg)
         req.llm.apply_to(cfg)
+
+        def finish(response: AskResponse, run=None) -> AskResponse:
+            actions = list(run.deps.events) if run is not None else []
+            append_trace(cfg, {
+                "request_id": response.request_id,
+                "source": response.source,
+                "mode": response.mode,
+                "question": req.question,
+                "question_sha256": sanitize_answer_text(req.question)["sha256"],
+                "plan": {"scope": dict(req.scope or {})},
+                "scope_decision": (
+                    run.scope.model_dump() if run is not None else None
+                ),
+                "actions": actions,
+                "outcome": {
+                    "route": response.route,
+                    "refused": response.refused,
+                    "refuse_reason": response.refuse_reason,
+                    "answer": sanitize_answer_text(response.text),
+                    "citation_ids": [citation.id for citation in response.citations],
+                    "verdicts": [
+                        {
+                            "status": verdict.status,
+                            "text": sanitize_answer_text(verdict.text),
+                            "detail_sha256": sanitize_answer_text(verdict.detail)["sha256"],
+                        }
+                        for verdict in response.verdicts
+                    ],
+                    "warnings": list(response.warnings),
+                    "error": response.error,
+                    "elapsed_s": response.usage.elapsed_s,
+                    "agent": (
+                        {
+                            "search_calls": run.deps.search_calls,
+                            "fetch_calls": run.deps.fetch_calls,
+                            "topic_calls": run.deps.topic_calls,
+                        }
+                        if run is not None else {}
+                    ),
+                },
+            })
+            return response
+
         corpus = self._corpus(req.source)
-        store = LancePaperStore(cfg)
+        store = LancePaperStore(cfg, source=req.source)
         if not store.available:
             raise ApiError(
                 E_INTERNAL,
@@ -104,7 +152,7 @@ class Engine:
             )
         if req.dry_run:
             message = "算法 v2 需要 LLM 与 LanceDB，dry-run 暂不生成回答。"
-            return AskResponse(
+            return finish(AskResponse(
                 request_id=new_request_id(),
                 source=req.source,
                 mode=req.mode,
@@ -112,7 +160,7 @@ class Engine:
                 error={"code": E_NO_API_KEY, "message": message},
                 warnings=[message],
                 meta={"agent": {"dry_run": True}},
-            )
+            ))
 
         if on_event:
             on_event(stage_event("retrieve", elapsed=0.0))
@@ -120,40 +168,45 @@ class Engine:
             run = run_research_agent(
                 req.question,
                 cfg=cfg,
+                source=req.source,
+                scope=req.scope,
                 history=[m.to_dict() for m in req.history],
             )
         except RuntimeError as exc:
             if "API key" in str(exc):
                 raise ApiError(E_NO_API_KEY, str(exc)) from exc
-            return AskResponse(
+            return finish(AskResponse(
                 request_id=new_request_id(),
                 source=req.source,
                 mode=req.mode,
                 route="error",
                 error={"code": E_INTERNAL, "message": str(exc)},
                 warnings=[str(exc)],
-            )
+            ))
         except Exception as exc:  # noqa: BLE001
             message = f"算法 v2 agent 失败：{type(exc).__name__}: {exc}"
-            return AskResponse(
+            return finish(AskResponse(
                 request_id=new_request_id(),
                 source=req.source,
                 mode=req.mode,
                 route="error",
                 error={"code": E_INTERNAL, "message": message},
                 warnings=[message],
-            )
+            ))
         try:
             if on_event:
                 on_event(stage_event("answer", elapsed=time.perf_counter() - started))
+            answer = run.answer
+            if not answer.claims and run.deps.fetched_order:
+                answer = extractive_fallback(corpus, run.deps.fetched_order)
             grounded = verify_and_render(
-                run.answer,
+                answer,
                 corpus=corpus,
                 cfg=cfg,
             )
         except Exception as exc:  # noqa: BLE001
             message = f"算法 v2 处理失败：{type(exc).__name__}: {exc}"
-            return AskResponse(
+            return finish(AskResponse(
                 request_id=new_request_id(),
                 source=req.source,
                 mode=req.mode,
@@ -161,12 +214,12 @@ class Engine:
                 error={"code": E_INTERNAL, "message": message},
                 warnings=[message],
                 meta={"agent": {"tool_events": run.deps.events}},
-            )
+            ), run)
         if on_event:
             on_event(stage_event("verify", elapsed=time.perf_counter() - started))
 
         elapsed = round(time.perf_counter() - started, 3)
-        return AskResponse(
+        return finish(AskResponse(
             request_id=new_request_id(),
             source=req.source,
             mode=req.mode,
@@ -193,13 +246,15 @@ class Engine:
                 "agent": {
                     "search_calls": run.deps.search_calls,
                     "fetch_calls": run.deps.fetch_calls,
+                    "topic_calls": run.deps.topic_calls,
                     "seen_ids": len(run.deps.seen_ids),
                     "fetched_ids": len(run.deps.fetched),
                     "tool_events": run.deps.events,
                 },
                 "answer_claims": [item.model_dump() for item in run.answer.claims],
+                "scope": run.scope.model_dump(),
             },
-        )
+        ), run)
 
 
 def get_engine() -> Engine:

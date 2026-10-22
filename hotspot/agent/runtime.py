@@ -12,9 +12,16 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
 
-from ..core.models import AgentAnswer, PaperDetail, SearchResult
+from ..core.models import (
+    AgentAnswer,
+    PaperDetail,
+    ScopeDecision,
+    SearchResult,
+    TopicOverview,
+)
 from ..tools.papers import fetch_papers
 from ..tools.search import search_papers
+from ..tools.topics import get_topic_overview
 from .deps import AgentDeps
 
 
@@ -22,6 +29,7 @@ from .deps import AgentDeps
 class AgentRun:
     answer: AgentAnswer
     deps: AgentDeps
+    scope: ScopeDecision
 
 
 INSTRUCTIONS = """你是本地论文库研究助手。只能依据工具返回的论文证据回答。
@@ -30,11 +38,21 @@ INSTRUCTIONS = """你是本地论文库研究助手。只能依据工具返回�
 1. 问题涉及方法或论文时，先调用 search_papers；查询可用英文关键词。
 2. 需要引用任何论文前，必须调用 fetch_papers 获取摘要。
 3. 比较两个对象时分别搜索两次，不要只搜一个合并字符串。
-4. 只能引用 fetched 中真实存在的 paper_id，不得编造 ID、标题或结论。
-5. 每条 claim 必须带 evidence_ids；没有足够证据时返回空 claims，并填写 no_answer_reason。
-6. 不回答本地论文库无法支持的外部知识问题。
-7. 最多 4 次 search、3 次 fetch；证据足够后立即停止调用工具。
-8. 用户使用中文时，最终 claim 使用中文；论文标题保持原文。
+4. 问热门方向、研究趋势或领域概览时，先调用 get_topic_overview；它读取离线主题快照。
+5. 只能引用 fetched 中真实存在的 paper_id，不得编造 ID、标题或结论。
+6. 每条 claim 必须带 evidence_ids；没有足够证据时返回空 claims，并填写 no_answer_reason。
+7. 不回答本地论文库无法支持的外部知识问题。
+8. 最多 4 次 search、3 次 fetch、2 次 topic overview；证据足够后停止。
+9. 用户使用中文时，最终 claim 使用中文；论文标题保持原文。
+"""
+
+SCOPE_INSTRUCTIONS = """判断用户问题是否属于本地 AI/ML 论文库的研究范围。
+
+范围内：强化学习、LLM 对齐与偏好优化、智能体、机器人学习、决策、相关机器学习。
+范围外：医学/临床影像、生物信息、量子物理、材料、土木、大气、航天等核心领域问题。
+跨领域应用只有在用户明确询问其中的 ML/RL 方法、模型或算法贡献时才判为范围内；
+仅仅询问应用领域本身的热点、方法或进展时判为范围外。
+只输出结构化判断，不要回答问题。
 """
 
 
@@ -84,12 +102,14 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
         if ctx.deps.search_calls >= 4:
             raise ModelRetry("search budget exhausted; answer with current evidence")
         ctx.deps.search_calls += 1
+        effective_years = ctx.deps.years or years or []
+        effective_venues = ctx.deps.venues or venues or []
         result = search_papers(
             ctx.deps.store,
             query,
             keywords=keywords,
-            years=years,
-            venues=venues,
+            years=effective_years,
+            venues=effective_venues,
             limit=limit,
         )
         ctx.deps.seen_ids.update(hit.paper_id for hit in result.results)
@@ -115,11 +135,34 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
             raise ModelRetry(f"paper IDs were not returned by search: {unknown}")
         result = fetch_papers(ctx.deps.store, paper_ids)
         ctx.deps.fetched.update(paper.paper_id for paper in result)
+        ctx.deps.fetched_order.extend(
+            paper.paper_id for paper in result
+            if paper.paper_id not in ctx.deps.fetched_order
+        )
         ctx.deps.events.append({
             "tool": "fetch_papers",
             "requested": len(paper_ids),
             "returned": len(result),
             "ids": [paper.paper_id for paper in result],
+        })
+        return result
+
+    @agent.tool
+    def topic_tool(
+        ctx: RunContext[AgentDeps],
+        query: str,
+        limit: int = 5,
+    ) -> TopicOverview:
+        """Read precomputed topic clusters with venue/year spread for trend questions."""
+        if ctx.deps.topic_calls >= 2:
+            raise ModelRetry("topic overview budget exhausted")
+        ctx.deps.topic_calls += 1
+        result = get_topic_overview(ctx.deps.topics, query, limit=limit)
+        ctx.deps.events.append({
+            "tool": "get_topic_overview",
+            "query": query,
+            "returned": len(result.topics),
+            "cluster_ids": [topic.cluster_id for topic in result.topics],
         })
         return result
 
@@ -157,14 +200,48 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
     return agent
 
 
+def _classify_scope(question: str, cfg: dict, *, timeout: float = 45.0) -> ScopeDecision:
+    llm = cfg.get("llm") or {}
+    provider = OpenAIProvider(
+        base_url=_normalize_base_url(
+            str(llm.get("base_url") or "https://api.deepseek.com/v1")
+        ),
+        api_key=_api_key(cfg),
+    )
+    model = OpenAIChatModel(
+        str(llm.get("model_flash") or llm.get("model_pro") or "deepseek-chat"),
+        provider=provider,
+    )
+    agent = Agent(
+        model,
+        output_type=ScopeDecision,
+        instructions=SCOPE_INSTRUCTIONS,
+        retries=1,
+    )
+    result = agent.run_sync(
+        question,
+        timeout=timeout,
+        usage_limits=UsageLimits(request_limit=2),
+    )
+    return result.output
+
+
 def run_research_agent(
     question: str,
     *,
     cfg: dict,
+    source: str = "meeting",
+    scope: dict | None = None,
     history: list[dict] | None = None,
     timeout: float = 180.0,
 ) -> AgentRun:
-    deps = AgentDeps(cfg=cfg)
+    scope = scope or {}
+    deps = AgentDeps(
+        cfg=cfg,
+        source=source,
+        years=[int(y) for y in (scope.get("years") or [])],
+        venues=[str(v) for v in (scope.get("venues") or [])],
+    )
     if not deps.store.available:
         raise RuntimeError(
             "LanceDB index missing; run scripts/build_lance_index.py"
@@ -178,13 +255,21 @@ def run_research_agent(
         )
         if recent:
             prompt = f"最近对话：\n{recent}\n\n当前问题：{question}"
+    scope_decision = _classify_scope(prompt, cfg, timeout=min(45.0, timeout))
+    if not scope_decision.in_scope:
+        return AgentRun(
+            answer=AgentAnswer(no_answer_reason=scope_decision.reason),
+            deps=deps,
+            scope=scope_decision,
+        )
+
     result = _build_agent(cfg).run_sync(
         prompt,
         deps=deps,
         timeout=timeout,
         usage_limits=UsageLimits(
-            request_limit=8,
-            tool_calls_limit=8,
+            request_limit=10,
+            tool_calls_limit=10,
         ),
     )
-    return AgentRun(answer=result.output, deps=deps)
+    return AgentRun(answer=result.output, deps=deps, scope=scope_decision)

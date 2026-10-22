@@ -29,6 +29,7 @@ tags: [索引]
 | `agent/` | PydanticAI controller 与 grounded output | [[hotspot/agent/_index\|打开]] |
 | `core/` | 工具/agent/API 共用的领域模型 | [[hotspot/core/_index\|打开]] |
 | `index/` | LanceDB paper index 与混合召回 | [[hotspot/index/_index\|打开]] |
+| `observability/` | append-only request Trace | [[hotspot/observability/_index\|打开]] |
 | `reasoning/` | 证据、回答结构、引用校验 | [[hotspot/reasoning/_index\|打开]] |
 | `retrieval/` | 仅保留上下文装配，待新检索栈替换 | [[hotspot/retrieval/_index\|打开]] |
 | `structure/` | embedding 与会议扩散统计 | [[hotspot/structure/_index\|打开]] |

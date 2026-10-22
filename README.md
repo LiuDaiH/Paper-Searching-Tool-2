@@ -54,6 +54,7 @@ tags: [索引, 说明书]
 | `hotspot/agent/` | deps / runtime（PydanticAI controller） |
 | `hotspot/core/` | models（工具与 agent 领域模型） |
 | `hotspot/index/` | lance_store（LanceDB paper index） |
+| `hotspot/observability/` | trace（request-scoped append-only） |
 | `hotspot/structure/` | embed / venue_matrix |
 | `hotspot/retrieval/` | assemble（新检索栈待建） |
 | `hotspot/tools/` | search / papers |

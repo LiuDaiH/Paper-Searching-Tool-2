@@ -4,16 +4,22 @@ from .models import (
     AgentAnswer,
     AnswerClaim,
     PaperDetail,
+    ScopeDecision,
     SearchFilters,
     SearchHit,
     SearchResult,
+    TopicHit,
+    TopicOverview,
 )
 
 __all__ = [
     "AgentAnswer",
     "AnswerClaim",
     "PaperDetail",
+    "ScopeDecision",
     "SearchFilters",
     "SearchHit",
     "SearchResult",
+    "TopicHit",
+    "TopicOverview",
 ]

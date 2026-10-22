@@ -6,8 +6,8 @@
 
 ## 当前目标
 
-算法 v2 paper-first 纵链已搭起：LanceDB search/fetch → PydanticAI agent →
-mandatory verify。下一步补工具级基准与 global topic 工具。
+算法 v2 paper-first 与离线 topic snapshot 已接通；当前重点是扩大语义 qrels，
+再决定是否接入 Jev reranker。
 
 ## 基线
 
@@ -34,17 +34,20 @@ mandatory verify。下一步补工具级基准与 global topic 工具。
 ## 当前状态
 
 - LanceDB 全量索引已建立：22,747 篇、1024 维、vector + FTS。
-- `Engine.ask` 已接 PydanticAI agent；真实 DPO 问题跑通并返回带引用答案。
-- Agent 可选 `search_papers` / `fetch_papers`；evidence 输出必须有 fetched ID。
+- `Engine.ask` 已接 PydanticAI agent；范围内问题可返回带引用答案。
+- Agent 可选 `search_papers` / `fetch_papers` / `get_topic_overview`；
+  evidence 输出必须有 fetched ID。
 - 输出后强制 `verify_and_render`，未通过引用校验的 claim 不进入答案。
-- 5 条精确标题探测 5/5 命中；更完整工具基准待补。
+- 32 条精确标题探测 32/32；v2 工具集 Recall@10=0.291、Recall@50=0.558。
+- 5 条 OOD smoke 5/5 拒答；全局趋势问题会调用离线 topic snapshot。
+- Trace v2 已写入 `workspace/ledger/retrieval_trace.jsonl`。
 
 ## 下一步
 
-1. 扩大离线工具基准，校准 LanceDB 召回质量。
-2. 增加 scope/QueryPlan 的硬约束与 OOD 评测。
-3. 增加离线 topic snapshot 与 `get_topic_overview`。
-4. 将工具事件写入可回放 Trace。
+1. 扩充语义检索 qrels，校准 LanceDB 召回质量。
+2. 运行覆盖更多 local/compare/relation/OOD 的真实 agent 回归。
+3. Jev reranker 实验阻塞：本机模型权重和 API 凭据当前都不可用。
+4. 评估 topic snapshot 的可读性，再决定是否需要新主题模型。
 
 ## 固定验收
 

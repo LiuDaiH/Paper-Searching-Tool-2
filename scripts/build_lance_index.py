@@ -17,11 +17,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=None)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--source", choices=("meeting", "arxiv"), default="meeting")
     args = parser.parse_args()
     manifest = build_lance_index(
         load_config(),
         out_dir=Path(args.out) if args.out else None,
         limit=args.limit,
+        source=args.source,
     )
     print(
         f"lance | papers={manifest['papers']} dim={manifest['dimension']} "
