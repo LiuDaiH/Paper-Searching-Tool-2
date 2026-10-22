@@ -37,7 +37,11 @@ from ..cost import record_qa
 from ..direction import select
 from ..llm import make_client
 from ..reasoning import verify
-from ..reasoning.answer import generate_answer
+from ..reasoning.answer import (
+    extract_claim_answer,
+    generate_answer,
+    generate_claim_answer,
+)
 from ..retrieval.assemble import assemble
 from ..retrieval.rewrite import rewrite
 from ..retrieval.router import REFUSE_REASON, route
@@ -321,9 +325,10 @@ class Engine:
                     index=None, bm25=None) -> Optional[_Turn]:
         emit("parse")
         parsed = parse_query(req.question, client, cfg=cfg)
-        if parsed.get("input_class") in {
-            "nonsense", "injection", "unsafe", "spam", "duplicate",
-            "unsupported_media",
+        answer_mode = str(parsed.get("answer_mode") or "")
+        if answer_mode == "refuse" or parsed.get("input_class") in {
+            "nonsense", "out_of_scope", "injection", "unsafe", "spam",
+            "duplicate", "unsupported_media",
         }:
             return _Turn(
                 route="refuse", refused=True,
@@ -331,18 +336,44 @@ class Engine:
                 % parsed.get("input_class"),
                 meta={"plan": parsed},
             )
-        if parsed.get("input_class") in {"chitchat", "help"} or parsed.get("intent") == "meta":
+        if (answer_mode == "help"
+                or parsed.get("input_class") in {"chitchat", "help"}
+                or parsed.get("intent") == "meta"):
             return _Turn(
                 route="local",
                 text=("我是移动云杯的论文热点助手，可以按会议/arXiv 语料检索论文、"
                       "总结热点、比较方法并给出引用。请直接问一个研究方向。"),
                 meta={"plan": parsed},
             )
-        if parsed.get("input_class") == "ambiguous":
+        if answer_mode == "clarify" or parsed.get("input_class") == "ambiguous":
             return _Turn(
                 route="refuse", refused=True,
                 refuse_reason="问题范围不够明确，请补充研究方向、时间范围或要比较的对象。",
                 meta={"plan": parsed},
+            )
+        required_subqs = [
+            q for q in (parsed.get("sub_questions") or [])
+            if q.get("required", True)
+        ]
+        if len(required_subqs) > 1:
+            return self._ask_multi_intent(
+                req, parsed, cfg=cfg, c=c, client=client, emit=emit,
+                index=index, bm25=bm25,
+            )
+        if answer_mode == "compare":
+            return self._ask_compare_intent(
+                req, parsed, cfg=cfg, c=c, client=client, emit=emit,
+                index=index, bm25=bm25,
+            )
+        if answer_mode == "relation":
+            return self._ask_relation_intent(
+                req, parsed, cfg=cfg, c=c, client=client, emit=emit,
+                index=index, bm25=bm25,
+            )
+        if answer_mode == "paper_fact":
+            return self._ask_local_intent(
+                req, parsed, cfg=cfg, c=c, client=client, emit=emit,
+                index=index, bm25=bm25,
             )
         emit("retrieve")
         res = subcluster_adaptive(
@@ -434,7 +465,19 @@ class Engine:
         ctx = assemble(Route.GLOBAL, body=body, question=req.question, allowed_ids=allowed)
 
         emit("answer")
-        text = generate_answer(ctx, cfg=cfg, client=client)
+        claim_answer = generate_claim_answer(ctx, cfg=cfg, client=client)
+        claim_first_used = claim_answer.ok
+        if claim_first_used:
+            text = claim_answer.text
+            if claim_answer.limitations:
+                warnings.append(
+                    "结构化答案限制：" + "；".join(claim_answer.limitations)
+                )
+        else:
+            text = ""
+            warnings.append(
+                f"结构化 claim 生成失败，退回自由文本：{claim_answer.reason}"
+            )
         if not self._answer_is_valid(text, cfg):
             warnings.append("首次回答为空/超短/无引用，已重试一次")
             text = generate_answer(ctx, cfg=cfg, client=client)
@@ -454,16 +497,27 @@ class Engine:
             )
         self._warn_if_truncated(cfg, body, req.question, warnings)
 
-        claims = [] if fallback_used else verify.parse_claims(text)
+        claims = verify.parse_claims(text)
         evidence = self._intent_evidence(c, clusters, res.get("query_hits") or [],
                                          cards, topics, claims)
         emit("verify")
-        verdicts = [] if fallback_used else [
-            Verdict(status=v.status, text=v.claim.text[:240], detail=v.detail)
-            for v in verify.verify_claims(
+        if fallback_used:
+            verdicts = self._fallback_verdicts(claims, ctx.allowed_ids)
+        else:
+            verdicts = self._verify_with_timeout(
                 claims, allowed_ids=ctx.allowed_ids, evidence_lookup=evidence,
-                client=client, cfg=cfg, progress=self._progress_adapter(emit))
-        ]
+                client=client, cfg=cfg, emit=emit, warnings=warnings,
+            )
+        if claim_first_used:
+            text, verdicts = self._filter_claim_first_output(
+                verdicts, ctx, warnings,
+            )
+            if not text:
+                return _Turn(
+                    route="error", text="",
+                    warnings=warnings + ["没有通过校验的可答 claim"],
+                    meta={"plan": parsed},
+                )
         graph = (self._graph_from_kp(res.get("key_path"), c)
                  if req.include_graph else None)
         return _Turn(route="global", text=text, verdicts=verdicts, topics=topics,
@@ -474,14 +528,486 @@ class Engine:
                            "retrieval_notes": res.get("retrieval_notes") or [],
                            "plan": parsed,
                            "decision": "answer",
+                           "claim_first": claim_first_used,
                            "evidence": (res.get("retrieval") or {}).get("evidence") or {}})
+
+    def _retrieval_refusal(self, parsed: dict, res: dict) -> _Turn:
+        return _Turn(
+            route="refuse", refused=True,
+            refuse_reason=str(res.get("refuse_reason") or "证据不足"),
+            warnings=list(res.get("retrieval_notes") or []),
+            meta={
+                "retrieval": res.get("retrieval") or {},
+                "retrieval_notes": res.get("retrieval_notes") or [],
+                "plan": parsed,
+                "decision": res.get("decision") or "refused",
+                "evidence": res.get("evidence")
+                or (res.get("retrieval") or {}).get("evidence") or {},
+            },
+        )
+
+    def _answer_from_evidence(
+        self, req: AskRequest, parsed: dict, res: dict, *,
+        cfg, c, client, emit, warnings: list[str],
+        ids: list[str], supplement: str = "",
+    ) -> _Turn:
+        """论文级证据路径：只装配直接证据，不经过簇卡片。"""
+        ev_chars = int((cfg.get("api") or {}).get("evidence_chars") or 300)
+        max_ev = int((cfg.get("api") or {}).get("max_evidence") or 8)
+        ordered_ids = [str(pid) for pid in ids if c.get(str(pid)) is not None]
+        ordered_ids = list(dict.fromkeys(ordered_ids))[:max_ev]
+        ev_lines = []
+        for pid in ordered_ids:
+            p = c.get(pid)
+            if p is not None and (p.title or p.abstract):
+                ev_lines.append(
+                    f"[P:{pid}] {p.title}\n{(p.abstract or '')[:ev_chars]}"
+                )
+        body = "\n\n".join(x for x in (supplement.strip(), *ev_lines) if x)
+        if not body:
+            return _Turn(
+                route="error", text="",
+                warnings=warnings + ["论文级路径没有可用证据"],
+                meta={"plan": parsed},
+            )
+        allowed = frozenset(ordered_ids)
+        ctx = assemble(Route.LOCAL, body=body, question=req.question,
+                       allowed_ids=allowed)
+        emit("answer")
+        claim_answer = generate_claim_answer(ctx, cfg=cfg, client=client)
+        claim_first_used = claim_answer.ok
+        if claim_first_used:
+            text = claim_answer.text
+            if claim_answer.limitations:
+                warnings.append(
+                    "结构化答案限制：" + "；".join(claim_answer.limitations)
+                )
+        else:
+            text = ""
+            warnings.append(
+                f"结构化 claim 生成失败，退回自由文本：{claim_answer.reason}"
+            )
+        if not self._answer_is_valid(text, cfg):
+            warnings.append("首次回答为空/超短/无引用，已重试一次")
+            text = generate_answer(ctx, cfg=cfg, client=client)
+        fallback_used = False
+        if not self._answer_is_valid(text, cfg):
+            fallback_res = {
+                "query_hits": ordered_ids,
+                "retrieval": res.get("retrieval") or {},
+            }
+            text = self._fallback_answer(req.question, fallback_res, c)
+            fallback_used = bool(text)
+            if fallback_used:
+                warnings.append("LLM 生成失败，已用检索证据生成降级答案")
+        if not self._answer_is_valid(text, cfg):
+            return _Turn(
+                route="error", text="",
+                warnings=warnings + ["回答重试后仍为空/超短/无引用"],
+                meta={"plan": parsed},
+            )
+        self._warn_if_truncated(cfg, body, req.question, warnings)
+        claims = verify.parse_claims(text)
+        evidence = self._intent_evidence(c, [], ordered_ids, [], [], claims)
+        emit("verify")
+        if fallback_used:
+            verdicts = self._fallback_verdicts(claims, ctx.allowed_ids)
+        else:
+            verdicts = self._verify_with_timeout(
+                claims, allowed_ids=ctx.allowed_ids, evidence_lookup=evidence,
+                client=client, cfg=cfg, emit=emit, warnings=warnings,
+            )
+        if claim_first_used:
+            text, verdicts = self._filter_claim_first_output(
+                verdicts, ctx, warnings,
+            )
+            if not text:
+                return _Turn(
+                    route="error", text="",
+                    warnings=warnings + ["没有通过校验的可答 claim"],
+                    meta={"plan": parsed},
+                )
+        return _Turn(
+            route="local", text=text, verdicts=verdicts, warnings=warnings,
+            meta={
+                "retrieval": res.get("retrieval") or {},
+                "retrieval_notes": res.get("retrieval_notes") or [],
+                "plan": parsed,
+                "decision": "answer",
+                "claim_first": claim_first_used,
+                "evidence": (res.get("retrieval") or {}).get("evidence") or {},
+            },
+        )
+
+    def _ask_local_intent(self, req: AskRequest, parsed: dict, *,
+                          cfg, c, client, emit, index=None, bm25=None) -> _Turn:
+        emit("retrieve")
+        res = subcluster_adaptive(
+            parsed, cfg=cfg, corpus=c, index=index, bm25=bm25,
+            scope=req.scope, cluster=False,
+        )
+        if res.get("refused"):
+            return self._retrieval_refusal(parsed, res)
+        ids = list(res.get("query_hits") or [])
+        evidence = (res.get("retrieval") or {}).get("evidence") or {}
+        if evidence.get("evidence_id"):
+            ids.insert(0, str(evidence["evidence_id"]))
+        if not ids:
+            return _Turn(
+                route="refuse", refused=True,
+                refuse_reason="没有找到足以回答该事实问题的论文证据",
+                meta={"plan": parsed, "retrieval": res.get("retrieval") or {}},
+            )
+        supplement = "回答模式：具体论文事实。优先直接回答核心机制、改进点和差异。"
+        return self._answer_from_evidence(
+            req, parsed, res, cfg=cfg, c=c, client=client, emit=emit,
+            warnings=[], ids=ids, supplement=supplement,
+        )
+
+    @staticmethod
+    def _side_plan(parsed: dict, side: str) -> dict:
+        side_plan = copy.deepcopy(parsed)
+        concept = None
+        needle = side.casefold()
+        for item in (parsed.get("core_concepts") or []):
+            names = [str(item.get("name") or ""), *[
+                str(x) for x in (item.get("aliases") or []) if str(x).strip()
+            ]]
+            if needle in {x.casefold() for x in names if x}:
+                concept = item
+                break
+        aliases = list(dict.fromkeys([
+            side,
+            *([str(x) for x in (concept or {}).get("aliases") or [] if str(x).strip()]),
+        ]))
+        side_plan.update({
+            "topic_en": side,
+            "core_terms": [side],
+            "core_concepts": [{
+                "name": str((concept or {}).get("name") or side),
+                "aliases": aliases,
+                "required": True,
+                "weight": 1.0,
+            }],
+            "anchors": [],
+            "keywords": aliases,
+            "intent": "fact",
+            "answer_mode": "paper_fact",
+            "requirements": [],
+            "sub_questions": [{
+                "id": "q1", "question": side, "required": True,
+            }],
+        })
+        return side_plan
+
+    def _ask_compare_intent(self, req: AskRequest, parsed: dict, *,
+                            cfg, c, client, emit, index=None, bm25=None) -> _Turn:
+        metric_markers = (
+            "sample efficiency", "sample complexity", "data efficiency",
+            "performance", "accuracy", "latency", "cost",
+        )
+        concepts = [
+            item for item in (parsed.get("core_concepts") or [])
+            if item.get("name")
+        ]
+        metric_concepts = [
+            item for item in concepts
+            if any(marker in str(item.get("name") or "").lower()
+                   for marker in metric_markers)
+        ]
+        metric_names = {str(item.get("name") or "") for item in metric_concepts}
+        sides: list[str] = []
+        for requirement in (parsed.get("requirements") or []):
+            if requirement.get("kind") != "comparison_side":
+                continue
+            value = str(requirement.get("value") or "").strip()
+            low = value.lower()
+            for concept in concepts:
+                name = str(concept.get("name") or "")
+                if not name or name in metric_names:
+                    continue
+                aliases = [
+                    name,
+                    *[str(x) for x in (concept.get("aliases") or []) if str(x).strip()],
+                ]
+                if any(alias.lower() in low for alias in aliases):
+                    sides.append(name)
+        if len(sides) < 2:
+            sides = [
+                str(item.get("name") or "")
+                for item in concepts
+                if item.get("name") and item.get("name") not in metric_names
+            ]
+        sides = list(dict.fromkeys(sides))[:4]
+        if len(sides) < 2:
+            return _Turn(
+                route="refuse", refused=True,
+                refuse_reason="对比问题缺少两个可识别的对比对象",
+                meta={"plan": parsed},
+            )
+        compare_plan = copy.deepcopy(parsed)
+        compare_plan["requirements"] = [
+            {"kind": "comparison_side", "value": side, "required": True}
+            for side in sides
+        ] + [
+            {"kind": "metric", "value": str(item.get("name")), "required": True}
+            for item in metric_concepts
+        ]
+        emit("retrieve")
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        side_results = []
+        primary_hits = []
+        expanded_hits = []
+        primary_ids: list[str] = []
+        expanded_ids: list[str] = []
+        notes: list[str] = []
+        for side in sides:
+            subplan = self._side_plan(compare_plan, side)
+            side_res = subcluster_adaptive(
+                subplan, cfg=cfg, corpus=c, index=index, bm25=bm25,
+                scope=req.scope, cluster=False,
+            )
+            if side_res.get("refused") or not side_res.get("query_hits"):
+                return _Turn(
+                    route="refuse", refused=True,
+                    refuse_reason=f"对比对象「{side}」缺少可答证据",
+                    warnings=list(side_res.get("retrieval_notes") or []),
+                    meta={
+                        "plan": compare_plan,
+                        "failed_side": side,
+                        "retrieval": side_res.get("retrieval") or {},
+                        "evidence": (side_res.get("retrieval") or {}).get("evidence") or {},
+                    },
+                )
+            side_results.append(side_res)
+            side_evidence = (side_res.get("retrieval") or {}).get("evidence") or {}
+            side_evidence_id = str(side_evidence.get("evidence_id") or "")
+            if side_evidence_id:
+                primary_hits.append(SimpleNamespace(paper_id=side_evidence_id))
+                primary_ids.append(side_evidence_id)
+            expanded_hits.extend(side_res.get("evidence_hits") or [])
+            expanded_ids.extend(side_res.get("query_hits") or [])
+            notes.extend(side_res.get("retrieval_notes") or [])
+        ids = list(dict.fromkeys([*primary_ids, *expanded_ids]))
+        from ..reasoning.evidence import evaluate as evaluate_evidence  # noqa: PLC0415
+
+        requirement_evidence = evaluate_evidence(
+            c, [*primary_hits, *expanded_hits], compare_plan,
+        )
+        if requirement_evidence.decision != "answer":
+            return _Turn(
+                route="refuse", refused=True,
+                refuse_reason=(
+                    f"对比证据不足（{requirement_evidence.decision}）："
+                    f"{requirement_evidence.reason}"
+                ),
+                warnings=notes,
+                meta={
+                    "plan": compare_plan,
+                    "decision": requirement_evidence.decision,
+                    "requirements": list(requirement_evidence.requirement_results),
+                    "evidence": requirement_evidence.to_dict(),
+                },
+            )
+        matrix = []
+        for item in requirement_evidence.requirement_results:
+            state = "已满足" if item["satisfied"] else "缺失"
+            matrix.append(
+                f"- {item['kind']}: {item['value']} = {state}"
+                + (f" ({', '.join(item['paper_ids'][:3])})"
+                   if item.get("paper_ids") else "")
+            )
+        for item in requirement_evidence.requirement_results:
+            ids.extend(item.get("paper_ids") or [])
+        supplement = (
+            f"回答模式：A/B 对比。必须逐项比较：{', '.join(sides)}。\n"
+            "需求矩阵：\n" + "\n".join(matrix)
+        )
+        merged_res = {
+            "query_hits": ids,
+            "retrieval_notes": list(dict.fromkeys(notes)),
+            "retrieval": {
+                "evidence": requirement_evidence.to_dict(),
+                "sides": [item.get("retrieval") or {} for item in side_results],
+            },
+        }
+        return self._answer_from_evidence(
+            req, compare_plan, merged_res, cfg=cfg, c=c, client=client, emit=emit,
+            warnings=list(dict.fromkeys(notes)), ids=ids, supplement=supplement,
+        )
+
+    def _ask_multi_intent(self, req: AskRequest, parsed: dict, *,
+                          cfg, c, client, emit, index=None, bm25=None) -> _Turn:
+        questions = [
+            q for q in (parsed.get("sub_questions") or [])
+            if q.get("required", True) and q.get("question")
+        ][:3]
+        if len(questions) < 2:
+            return self._ask_local_intent(
+                req, parsed, cfg=cfg, c=c, client=client, emit=emit,
+                index=index, bm25=bm25,
+            )
+        emit("retrieve")
+        primary_ids: list[str] = []
+        expanded_ids: list[str] = []
+        results = []
+        notes: list[str] = []
+        for item in questions:
+            subplan = parse_query(str(item["question"]), client, cfg=cfg)
+            if subplan.get("answer_mode") in {"refuse", "clarify", "help"}:
+                return _Turn(
+                    route="refuse", refused=True,
+                    refuse_reason=(
+                        f"子问题「{item['question']}」无法检索："
+                        f"{subplan.get('answer_mode')}"
+                    ),
+                    meta={"plan": parsed, "failed_sub_question": item},
+                )
+            subres = subcluster_adaptive(
+                subplan, cfg=cfg, corpus=c, index=index, bm25=bm25,
+                scope=req.scope, cluster=False,
+            )
+            if subres.get("refused") or not subres.get("query_hits"):
+                return _Turn(
+                    route="refuse", refused=True,
+                    refuse_reason=f"子问题「{item['question']}」缺少可答证据",
+                    warnings=list(subres.get("retrieval_notes") or []),
+                    meta={
+                        "plan": parsed,
+                        "failed_sub_question": item,
+                        "evidence": (subres.get("retrieval") or {}).get("evidence") or {},
+                    },
+                )
+            sub_evidence = (subres.get("retrieval") or {}).get("evidence") or {}
+            if sub_evidence.get("evidence_id"):
+                primary_ids.append(str(sub_evidence["evidence_id"]))
+            expanded_ids.extend(subres.get("query_hits") or [])
+            notes.extend(subres.get("retrieval_notes") or [])
+            results.append({
+                "id": item.get("id"),
+                "question": item["question"],
+                "evidence": (subres.get("retrieval") or {}).get("evidence") or {},
+                "retrieval": subres.get("retrieval") or {},
+            })
+        ids = list(dict.fromkeys([*primary_ids, *expanded_ids]))
+        supplement = "回答模式：多问题。请分别回答：\n" + "\n".join(
+            f"{i}. {item['question']}" for i, item in enumerate(questions, 1)
+        )
+        merged_res = {
+            "query_hits": ids,
+            "retrieval_notes": list(dict.fromkeys(notes)),
+            "retrieval": {"sub_questions": results},
+        }
+        return self._answer_from_evidence(
+            req, parsed, merged_res, cfg=cfg, c=c, client=client, emit=emit,
+            warnings=list(dict.fromkeys(notes)), ids=ids, supplement=supplement,
+        )
+
+    def _ask_relation_intent(self, req: AskRequest, parsed: dict, *,
+                             cfg, c, client, emit, index=None, bm25=None) -> _Turn:
+        concepts = [
+            item for item in (parsed.get("core_concepts") or [])
+            if item.get("name")
+        ][:2]
+        if len(concepts) < 2:
+            concepts = [
+                {"name": anchor, "aliases": [anchor]}
+                for anchor in (parsed.get("anchors") or [])[:2]
+            ]
+        if len(concepts) < 2:
+            return _Turn(
+                route="refuse", refused=True,
+                refuse_reason="关系问题缺少两个可识别的主题",
+                meta={"plan": parsed},
+            )
+        emit("retrieve")
+        primary_ids: list[str] = []
+        expanded_ids: list[str] = []
+        combined_hits = []
+        notes: list[str] = []
+        side_results = []
+        for concept in concepts:
+            side = str(concept.get("name") or "")
+            side_plan = self._side_plan(parsed, side)
+            side_plan["core_concepts"] = [{
+                "name": side,
+                "aliases": list(dict.fromkeys([
+                    side,
+                    *[str(x) for x in (concept.get("aliases") or []) if str(x).strip()],
+                ])),
+                "required": True,
+                "weight": 1.0,
+            }]
+            side_res = subcluster_adaptive(
+                side_plan, cfg=cfg, corpus=c, index=index, bm25=bm25,
+                scope=req.scope, cluster=False,
+            )
+            if side_res.get("refused") or not side_res.get("query_hits"):
+                return _Turn(
+                    route="refuse", refused=True,
+                    refuse_reason=f"关系主题「{side}」缺少可答证据",
+                    warnings=list(side_res.get("retrieval_notes") or []),
+                    meta={"plan": parsed, "failed_topic": side},
+                )
+            side_evidence = (side_res.get("retrieval") or {}).get("evidence") or {}
+            evidence_id = str(side_evidence.get("evidence_id") or "")
+            if evidence_id:
+                primary_ids.append(evidence_id)
+            expanded_ids.extend(side_res.get("query_hits") or [])
+            combined_hits.extend(side_res.get("evidence_hits") or [])
+            notes.extend(side_res.get("retrieval_notes") or [])
+            side_results.append(side_res)
+
+        from ..reasoning.evidence import _phrase_match  # noqa: PLC0415
+
+        common_ids: list[str] = []
+        seen: set[str] = set()
+        aliases = [
+            [str(concept.get("name") or ""), *[
+                str(x) for x in (concept.get("aliases") or []) if str(x).strip()
+            ]]
+            for concept in concepts
+        ]
+        for hit in combined_hits:
+            pid = str(getattr(hit, "paper_id", "") or "")
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            paper = c.get(pid)
+            if paper is None:
+                continue
+            text = f"{paper.title or ''} {paper.abstract or ''}"
+            if all(any(_phrase_match(text, alias) for alias in group) for group in aliases):
+                common_ids.append(pid)
+        ids = list(dict.fromkeys([
+            *common_ids, *primary_ids, *expanded_ids,
+        ]))
+        supplement = (
+            f"回答模式：主题关系。说明「{concepts[0].get('name')}」与"
+            f"「{concepts[1].get('name')}」的共同来源、共同理论或先序关系。"
+            "优先使用同时涉及两个主题的论文证据。"
+        )
+        merged_res = {
+            "query_hits": ids,
+            "retrieval_notes": list(dict.fromkeys(notes)),
+            "retrieval": {
+                "common_evidence_ids": common_ids,
+                "sides": [item.get("retrieval") or {} for item in side_results],
+            },
+        }
+        return self._answer_from_evidence(
+            req, parsed, merged_res, cfg=cfg, c=c, client=client, emit=emit,
+            warnings=list(dict.fromkeys(notes)), ids=ids, supplement=supplement,
+        )
 
     @staticmethod
     def _fallback_answer(question: str, res: dict, corpus) -> str:
         """LLM 生成失败时，用检索证据构造一个可引用的最小答案。"""
         evidence = (res.get("retrieval") or {}).get("evidence") or {}
         snippets = list(evidence.get("snippets") or [])
-        ids = [str(evidence.get("evidence_id") or "")] if evidence.get("evidence_id") else []
+        evidence_id = str(evidence.get("evidence_id") or "")
+        ids = [evidence_id] if evidence_id else []
         ids += list(res.get("query_hits") or [])
         if not ids:
             ids = [
@@ -489,19 +1015,20 @@ class Engine:
                 for cl in (res.get("clusters") or [])
                 for pid in (cl.get("members") or [])[:1]
             ]
-        for pid in ids:
+        parts = []
+        for pid in list(dict.fromkeys(ids))[:3]:
             p = corpus.get(pid)
             if p is None:
                 continue
-            snippet = (snippets[0] if snippets else (p.abstract or ""))[:300]
+            snippet = (
+                snippets[0] if snippets and pid == evidence_id
+                else (p.abstract or p.title or "")
+            )[:220]
             title = p.title or pid
-            text = (
-                f"本库中与「{question}」最直接相关的证据来自《{title}》："
-                f"{snippet} [P:{pid}]"
-            )
-            if len(text.strip()) >= 20:
-                return text
-        return ""
+            parts.append(f"《{title}》指出：{snippet} [P:{pid}]")
+        if not parts:
+            return ""
+        return f"本库中与「{question}」相关的直接证据如下：" + "；".join(parts)
 
     def _name_clusters(self, client, clusters, corpus) -> dict[int, tuple[str, str]]:
         """并行给簇命名。单簇失败返回空串，不阻塞整轮。"""
@@ -723,7 +1250,7 @@ class Engine:
                     evidence[pid] = f"{p.title}\n{p.abstract or ''}"
         emit("verify")
         verdicts = [
-            Verdict(status=v.status, text=v.claim.text[:240], detail=v.detail)
+            Verdict(status=v.status, text=_claim_text_for_verdict(v.claim.text), detail=v.detail)
             for v in verify.verify_claims(
                 claims, allowed_ids=ctx.allowed_ids, evidence_lookup=evidence,
                 client=client, cfg=cfg, progress=self._progress_adapter(emit))
@@ -1019,6 +1546,96 @@ class Engine:
         )
 
     @staticmethod
+    def _fallback_verdicts(claims, allowed_ids: frozenset[str]) -> list[Verdict]:
+        """抽句式降级答案直接来自摘要；合法引用即可判支持，避免再调远端。"""
+        out = []
+        for claim in claims:
+            status, detail = verify.classify(claim, allowed_ids=allowed_ids)
+            if status == "unsupported":
+                status = "supported"
+                detail = "抽句式降级答案，内容直接取自被引摘要"
+            out.append(Verdict(
+                status=status, text=_claim_text_for_verdict(claim.text), detail=detail,
+            ))
+        return out
+
+    def _filter_claim_first_output(self, verdicts: list[Verdict], context,
+                                   warnings: list[str]) -> tuple[str, list[Verdict]]:
+        """最终答案只保留校验通过的 claim；全失败时改走抽取式证据。"""
+        supported = [v for v in verdicts if v.status == "supported"]
+        if supported:
+            removed = len(verdicts) - len(supported)
+            if removed:
+                warnings.append(f"已从最终答案移除 {removed} 条未通过校验的 claim")
+            return "\n".join(v.text for v in supported), supported
+        extracted = extract_claim_answer(context)
+        if extracted.ok:
+            claims = verify.parse_claims(extracted.text)
+            verdicts = self._fallback_verdicts(claims, context.allowed_ids)
+            warnings.append("结构化 claims 全部未通过校验，已改用抽取式证据 claim")
+            return extracted.text, verdicts
+        warnings.append("结构化 claims 全部未通过校验，且没有可用抽取式证据")
+        return "", []
+
+    @staticmethod
+    def _lexical_verdicts(claims, allowed_ids: frozenset[str],
+                          evidence_lookup: dict[str, str]) -> list[Verdict]:
+        """远端校验超时时的保守本地兜底。"""
+        out = []
+        for claim in claims:
+            status, detail = verify.classify(claim, allowed_ids=allowed_ids)
+            if status == "unsupported":
+                evidence = "\n".join(
+                    evidence_lookup.get(pid, "") for pid in claim.cited_ids
+                )
+                claim_words = set(_words(claim.text))
+                evidence_words = set(_words(evidence))
+                overlap = (
+                    len(claim_words & evidence_words) / max(1, len(claim_words))
+                    if claim_words else 0.0
+                )
+                if overlap >= 0.55:
+                    status = "supported"
+                    detail = f"校验超时，本地词面覆盖 {overlap:.2f}"
+                else:
+                    status = "unsupported"
+                    detail = f"校验超时，本地词面覆盖仅 {overlap:.2f}"
+            out.append(Verdict(
+                status=status, text=_claim_text_for_verdict(claim.text), detail=detail,
+            ))
+        return out
+
+    def _verify_with_timeout(self, claims, *, allowed_ids, evidence_lookup,
+                             client, cfg, emit, warnings: list[str]) -> list[Verdict]:
+        """隔离远端校验长尾；超时后返回保守的本地判定。"""
+        timeout = float((cfg.get("api") or {}).get("verify_timeout_s") or 30.0)
+        holder: dict[str, list[Verdict]] = {}
+
+        def run() -> None:
+            holder["verdicts"] = [
+                Verdict(
+                    status=v.status,
+                    text=_claim_text_for_verdict(v.claim.text),
+                    detail=v.detail,
+                )
+                for v in verify.verify_claims(
+                    claims, allowed_ids=allowed_ids, evidence_lookup=evidence_lookup,
+                    client=client, cfg=cfg, progress=self._progress_adapter(emit),
+                )
+            ]
+
+        thread = threading.Thread(target=run, daemon=True,
+                                  name="hotspot-verify")
+        thread.start()
+        thread.join(timeout=max(1.0, timeout))
+        if not thread.is_alive() and "verdicts" in holder:
+            return holder["verdicts"]
+        warnings.append(
+            f"引用校验超过 {timeout:.0f}s，已用本地词面校验降级"
+        )
+        return self._lexical_verdicts(claims, allowed_ids, evidence_lookup)
+
+    @staticmethod
     def _warn_if_truncated(cfg, body: str, question: str, warnings: list[str]) -> None:
         limit = int((cfg.get("llm") or {}).get("max_input_chars") or 8000)
         if len(body) + len(question) > limit:
@@ -1073,6 +1690,16 @@ def _words(text: str) -> list[str]:
     import re  # noqa: PLC0415
 
     return re.findall(r"[A-Za-z0-9]+", (text or "").lower())
+
+
+def _claim_text_for_verdict(text: str, *, limit: int = 240) -> str:
+    """截断 claim 展示文本时保留其引用标记。"""
+    value = str(text or "")
+    shortened = value[:limit].rstrip()
+    if verify.REF.search(shortened):
+        return shortened
+    refs = "".join(match.group(0) for match in verify.REF.finditer(value))
+    return f"{shortened} {refs}".strip() if refs else shortened
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -114,6 +114,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:                         # noqa: N802
         path = urlparse(self.path).path
         if path != "/api/ask":
+            # Drain the body before 404; otherwise HTTP/1.1 keep-alive clients
+            # can observe a reset while the server writes the error response.
+            try:
+                self._read_body()
+            except ApiError:
+                pass
             self._error(404, "not_found", f"没有这个接口：{path}")
             return
         try:

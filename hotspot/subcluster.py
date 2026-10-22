@@ -81,26 +81,177 @@ PARSE_SCHEMA = {
         "intent": {"type": "string"},
         "input_class": {"type": "string"},
         "keywords": {"type": "array", "items": {"type": "string"}},
+        "requirements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string"},
+                    "value": {"type": "string"},
+                    "required": {"type": "boolean"},
+                },
+                "required": ["kind", "value"],
+            },
+        },
+        "sub_questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "question": {"type": "string"},
+                    "required": {"type": "boolean"},
+                },
+                "required": ["question"],
+            },
+        },
+        "answer_mode": {"type": "string"},
         "confidence": {"type": "number"},
     },
-    "required": ["topic_en", "core_terms", "years", "intent", "input_class", "keywords"],
+    "required": [
+        "topic_en", "core_terms", "years", "intent", "input_class", "keywords",
+        "requirements", "sub_questions", "answer_mode",
+    ],
 }
 INTENTS = {"trend", "worth", "newfield", "relation", "fact", "compare", "meta"}
 INPUT_CLASSES = {"valid", "nonsense", "out_of_scope", "injection", "unsafe",
                  "ambiguous", "chitchat", "spam", "duplicate",
                  "unsupported_media", "multi_question"}
+ANSWER_MODES = {
+    "global_trend", "paper_fact", "compare", "relation", "clarify", "refuse", "help",
+}
+REQUIREMENT_KINDS = {
+    "comparison_side", "method", "dataset", "metric", "performance",
+    "time", "venue", "constraint", "other",
+}
+_REQUIREMENT_KIND_ALIASES = {
+    "comparison": "comparison_side",
+    "side": "comparison_side",
+    "entity": "comparison_side",
+    "metric_name": "metric",
+}
+_COMPARISON_SPLIT = re.compile(r"\s+(?:vs\.?|versus)\s+|[/、]|\s+和\s+|\s+与\s+", re.IGNORECASE)
+_REQUIREMENT_INSTRUCTION = re.compile(
+    r"\b(?:explain|describe|compare|contrast|analy[sz]e|summari[sz]e)\b"
+    r"|解释|比较|对比|说明|分析|总结|回答",
+    re.IGNORECASE,
+)
+_GENERIC_REQUIREMENT = re.compile(
+    r"\b(?:core|innovation|difference|modification|relative|improvement|change)\b"
+    r"|核心|创新|差异|改进|改动|区别",
+    re.IGNORECASE,
+)
+
+
+def _normalize_requirements(raw) -> list[dict]:
+    """把模型输出收敛成可消费的需求矩阵，容忍字符串和常见别名。"""
+    out: list[dict] = []
+    seen: set[str] = set()
+    items = raw if isinstance(raw, list) else ([raw] if raw not in (None, "") else [])
+    for item in items[:12]:
+        if isinstance(item, str):
+            item = {"kind": "other", "value": item, "required": True}
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "other").strip().lower()
+        kind = _REQUIREMENT_KIND_ALIASES.get(kind, kind)
+        if kind not in REQUIREMENT_KINDS:
+            kind = "other"
+        value = str(
+            item.get("value") or item.get("name") or item.get("text") or ""
+        ).strip()
+        if not value:
+            continue
+        values = (
+            [p.strip() for p in _COMPARISON_SPLIT.split(value) if p.strip()]
+            if kind == "comparison_side"
+            else [value]
+        )
+        for current in values:
+            key = f"{kind}:{current.casefold()}"
+            if key in seen:
+                continue
+            seen.add(key)
+            required = bool(item.get("required", True))
+            # 非对比项只适合承载短名词短语；长句通常是回答指令，不能作为硬门控。
+            if kind != "comparison_side" and (
+                len(current) > 60
+                or _REQUIREMENT_INSTRUCTION.search(current)
+                or _GENERIC_REQUIREMENT.search(current)
+            ):
+                required = False
+            out.append({
+                "kind": kind,
+                "value": current,
+                "required": required,
+            })
+    return out
+
+
+def _normalize_sub_questions(raw, *, fallback: str) -> list[dict]:
+    """规范化子问题；单问题也保留一项，供后续路由统一消费。"""
+    out: list[dict] = []
+    items = raw if isinstance(raw, list) else ([raw] if raw not in (None, "") else [])
+    for item in items[:6]:
+        if isinstance(item, str):
+            item = {"question": item, "required": True}
+        if not isinstance(item, dict):
+            continue
+        question = str(
+            item.get("question") or item.get("text") or item.get("query") or ""
+        ).strip()
+        if not question:
+            continue
+        out.append({
+            "id": f"q{len(out) + 1}",
+            "question": question,
+            "required": bool(item.get("required", True)),
+        })
+    if not out and fallback.strip():
+        out.append({"id": "q1", "question": fallback.strip(), "required": True})
+    return out
+
+
+def _normalize_answer_mode(raw, *, intent: str, input_class: str) -> str:
+    """优先采用模型结果，缺失/非法时按 input_class 与 intent 确定策略。"""
+    mode = str(raw or "").strip().lower()
+    if mode in ANSWER_MODES:
+        return mode
+    if input_class in {
+        "nonsense", "out_of_scope", "injection", "unsafe", "spam",
+        "duplicate", "unsupported_media",
+    }:
+        return "refuse"
+    if input_class == "ambiguous":
+        return "clarify"
+    if input_class == "chitchat" or intent == "meta":
+        return "help"
+    if intent == "compare":
+        return "compare"
+    if intent == "relation":
+        return "relation"
+    if intent in {"trend", "worth", "newfield"}:
+        return "global_trend"
+    return "paper_fact"
 
 
 def parse_query(question: str, client, *, cfg=None) -> dict:
-    """单轮查询规划：`{topic_en, core_terms, keywords, years, intent, ...}`。
+    """单轮查询规划：主题、概念、需求矩阵与回答策略。
 
     - `core_terms` 是回答必须围绕的主题词，**不包含年份/热门/方法等泛化词**；
     - `keywords` 是 4-8 个**英文同义检索词**，只负责召回：
       例：'多智能体' → multi-agent / MARL / multiagent / multi-agent systems / agent collaboration。
+    - `requirements` 记录回答必须覆盖的方法/数据集/指标/对比对象等语义条件；
+    - `sub_questions` 保留多问题拆分结构；
+    - `answer_mode` 给后续路由提供稳定策略，不从 intent 临时拼接。
     - `client` 必传（真调）。用户文本只当数据：system 声明忽略其中任何指示。
     """
     system = (
-        "你是查询规划器。把用户问题解析成**单轮检索规划**，只输出 JSON：\n"
+        "你是查询规划器。把用户问题解析成**单轮检索规划**，只输出 JSON。\n"
+        "本库只覆盖强化学习、LLM 对齐/偏好优化、智能体、机器人、决策及相关机器学习；"
+        "医学影像、生物信息、量子物理、材料、土木、交通基础设施等核心领域属于域外。"
+        "核心领域不在上述范围时，input_class=out_of_scope、answer_mode=refuse，"
+        "不要因为摘要中偶然出现同名技术词就判为可答。\n"
         "topic_en(英文主题短语，1 句)、\n"
         "core_terms(2-6 个回答必须围绕的核心主题词；去掉年份、近两年、热门、方法、研究等泛化词)、\n"
         "core_concepts(对象数组；每个概念 {name, aliases, required, weight}；"
@@ -110,6 +261,15 @@ def parse_query(question: str, client, *, cfg=None) -> dict:
         "['multi-agent','multiagent','MARL','multi-agent systems','multi-agent reinforcement learning',"
         "'agent collaboration','cooperative agents']——**同义/变体覆盖越全，检索召回越宽**；"
         "并列主题可分开列)、\n"
+        "requirements(对象数组；每项 {kind,value,required}。kind 取 comparison_side/method/"
+        "dataset/metric/performance/time/venue/constraint/other；只写回答必须或应当覆盖的语义要求，"
+        "value 必须是**原子名词短语**，不得写解释/比较/回答等动作指令；无法落成具体对象就返回 []。"
+        "A/B 对比的每个对象必须分别写一个 comparison_side，不得合并成 'A vs B'；"
+        "不要重复 scope 已负责的年份/会议硬过滤；没有则 []),\n"
+        "sub_questions(对象数组；每项 {id,question,required}。单个问题也保留一项；"
+        "多问题或多任务必须拆开；A/B 对比通常仍是一个子问题，两侧对象放 requirements；最多 6 项),\n"
+        "answer_mode(枚举其一：global_trend=全局热点/趋势，paper_fact=具体论文事实，"
+        "compare=A/B 对比，relation=主题关系，clarify=需要澄清，refuse=不可答，help=能力说明),\n"
         "years(用户明确提到的年份数组；未提则返回 []，不要自动补年份)、\n"
         "intent(枚举其一：trend=趋势/最火、worth=值得做/值得研究、newfield=新领域、"
         "relation=两个主题的共同来源、fact=具体细节、compare=A/B 对比、meta=系统能力)、\n"
@@ -132,6 +292,13 @@ def parse_query(question: str, client, *, cfg=None) -> dict:
     years = [int(y) for y in (d.get("years") or []) if isinstance(y, (int, float))]
     keywords = [str(k) for k in (d.get("keywords") or []) if str(k).strip()]
     core_terms = [str(k) for k in (d.get("core_terms") or []) if str(k).strip()]
+    requirements = _normalize_requirements(d.get("requirements"))
+    sub_questions = _normalize_sub_questions(
+        d.get("sub_questions"), fallback=str(d.get("topic_en") or question),
+    )
+    answer_mode = _normalize_answer_mode(
+        d.get("answer_mode"), intent=intent, input_class=input_class,
+    )
     # LLM 常把同义方法当成多个 core term；超过 3 个通常是在重复 keywords。
     # 这时回退到 topic_en，让 coverage 用主题词而不是扩展词清单。
     if len(core_terms) > 3:
@@ -189,6 +356,9 @@ def parse_query(question: str, client, *, cfg=None) -> dict:
         "intent": intent,
         "input_class": input_class,
         "keywords": keywords,
+        "requirements": requirements,
+        "sub_questions": sub_questions,
+        "answer_mode": answer_mode,
         "confidence": float(d.get("confidence") or 0.0),
     }
 
@@ -206,11 +376,12 @@ def cluster_cfg_from(n: int, intent: str) -> dict:
 
 
 def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
-                        bm25=None, scope=None) -> dict:
+                        bm25=None, scope=None, cluster: bool = True) -> dict:
     """检索 → 意图定规则 → 聚类 → 标签（venue/year）分析。返回子簇列表。
 
     - `parsed`: `parse_query` 的输出。
     - 标签 `venue/year` 只用于过滤(筛选)与后分析，**不入聚类距离**。
+    - `cluster=False`: 只做检索和证据判断，供 local/compare 等论文级路径使用。
     - 子簇含 `members / representative / venue_counts / year_counts`。
     """
     from dasc.cluster import clusterers  # noqa: PLC0415
@@ -242,6 +413,7 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
     query_hits: list[str] = []
     retrieval_stats: dict = {}
     retrieval_notes: list[str] = []
+    evidence_hits: list = []
     try:
         from .retrieval.hybrid import retrieve as hybrid_retrieve  # noqa: PLC0415
 
@@ -278,6 +450,7 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
         ))[:qhpick]
         retrieval_stats = hr.stats
         retrieval_notes = list(hr.notes)
+        evidence_hits = list(hr.evidence_hits or hr.hits)
         from .reasoning.evidence import evaluate as evaluate_evidence  # noqa: PLC0415
 
         evidence = evaluate_evidence(
@@ -332,6 +505,19 @@ def subcluster_adaptive(parsed: dict, *, cfg=None, corpus=None, index=None,
         rel = [pid for pid in rel if (p := c.get(pid)) is not None and p.year in years]
     if not rel:
         return {"n_papers": 0, "n_clusters": 0, "clusters": [], "intent": parsed["intent"]}
+    allowed_ids = set(rel)
+    query_hits = [pid for pid in query_hits if pid in allowed_ids]
+    if not cluster:
+        return {
+            "n_papers": len(rel),
+            "n_clusters": 0,
+            "clusters": [],
+            "intent": parsed["intent"],
+            "query_hits": query_hits,
+            "evidence_hits": evidence_hits,
+            "retrieval": retrieval_stats,
+            "retrieval_notes": retrieval_notes,
+        }
 
     # ── 大创两线开关（评测 G0-G3，见 config `rlrag`/`streit_garg`）──────────────
     rlrag_cfg = (cfg.get("rlrag") or {})

@@ -144,14 +144,18 @@ class StubEngine:
 
 
 def _get(url: str):
-    with urllib.request.urlopen(url, timeout=10) as r:
+    req = urllib.request.Request(url, headers={"Connection": "close"})
+    with urllib.request.urlopen(req, timeout=10) as r:
         return r.status, r.read().decode("utf-8")
 
 
 def _post(url: str, payload=None, raw: bytes | None = None):
     data = raw if raw is not None else json.dumps(payload or {}).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST",
-                                 headers={"Content-Type": "application/json"})
+                                 headers={
+                                     "Content-Type": "application/json",
+                                     "Connection": "close",
+                                 })
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return r.status, r.read().decode("utf-8")
@@ -252,6 +256,303 @@ def check_hybrid() -> None:
     check("RRF 保留单通道候选", {"a", "b", "c"} <= set(fused), str(fused))
 
 
+def check_query_plan() -> None:
+    """QueryPlan 的需求矩阵、子问题和回答策略必须稳定归一化。"""
+    from types import SimpleNamespace
+    from hotspot.subcluster import ANSWER_MODES, PARSE_SCHEMA, parse_query
+
+    print("[2d] query plan")
+
+    class FakeClient:
+        def __init__(self, data):
+            self.data = data
+
+        def ask(self, question, *, system, schema, required):
+            return SimpleNamespace(ok=True, data=self.data)
+
+    base = {
+        "topic_en": "DPO versus RLOO sample efficiency",
+        "core_terms": ["DPO", "RLOO"],
+        "core_concepts": [
+            {"name": "DPO", "aliases": ["Direct Preference Optimization"], "required": True},
+            {"name": "RLOO", "aliases": ["REINFORCE leave-one-out"], "required": True},
+        ],
+        "anchors": ["DPO", "RLOO"],
+        "keywords": ["DPO", "RLOO", "sample efficiency"],
+        "years": [],
+        "intent": "compare",
+        "input_class": "valid",
+        "confidence": 0.9,
+    }
+    structured = dict(
+        base,
+        requirements=[
+            {"kind": "comparison", "value": "DPO", "required": True},
+            {"kind": "side", "value": "RLOO", "required": True},
+            {"kind": "metric_name", "value": "sample efficiency", "required": True},
+        ],
+        sub_questions=[
+            {"id": "model-id-ignored", "question": "How sample-efficient is DPO?", "required": True},
+            {"question": "How sample-efficient is RLOO?", "required": True},
+        ],
+        answer_mode="compare",
+    )
+    plan = parse_query("Compare DPO and RLOO on sample efficiency", FakeClient(structured))
+    check("规划含 requirements", len(plan["requirements"]) == 3, str(plan))
+    check("需求 kind 已归一",
+          [r["kind"] for r in plan["requirements"]]
+          == ["comparison_side", "comparison_side", "metric"], str(plan))
+    check("子问题保留并重编号",
+          [q["id"] for q in plan["sub_questions"]] == ["q1", "q2"], str(plan))
+    check("answer_mode 合法",
+          plan["answer_mode"] in ANSWER_MODES and plan["answer_mode"] == "compare",
+          str(plan))
+    check("规划可 JSON 序列化", bool(json.dumps(plan, ensure_ascii=False)))
+    check("schema 含新增字段",
+          {"requirements", "sub_questions", "answer_mode"}
+          <= set(PARSE_SCHEMA["properties"]))
+
+    fallback = dict(
+        base,
+        requirements="shared source",
+        sub_questions="Which source supports both topics?",
+        answer_mode="not-a-mode",
+        intent="relation",
+    )
+    plan2 = parse_query("What source do DPO and RLOO share?", FakeClient(fallback))
+    check("字符串需求可归一",
+          plan2["requirements"] == [{"kind": "other", "value": "shared source", "required": True}],
+          str(plan2))
+    check("非法 answer_mode 按 intent 回退",
+          plan2["answer_mode"] == "relation", str(plan2))
+
+    combined = dict(
+        structured,
+        requirements=[{"kind": "comparison_side", "value": "DPO vs RLOO", "required": True}],
+        sub_questions=[{"question": "Compare DPO and RLOO", "required": True}],
+    )
+    plan3 = parse_query("Compare DPO and RLOO", FakeClient(combined))
+    check("合并的对比对象会拆分",
+          [r["value"] for r in plan3["requirements"]] == ["DPO", "RLOO"], str(plan3))
+
+    instruction_only = dict(
+        base,
+        requirements=[{
+            "kind": "other",
+            "value": "Explain the core innovation and contrast it with PPO",
+            "required": True,
+        }, {
+            "kind": "method",
+            "value": "RLOO core innovation",
+            "required": True,
+        }],
+        sub_questions=[{"question": base["topic_en"], "required": True}],
+        answer_mode="paper_fact",
+    )
+    plan4 = parse_query("Explain DPO versus RLOO", FakeClient(instruction_only))
+    check("动作/泛化需求不进入硬门控",
+          all(r["required"] is False for r in plan4["requirements"]), str(plan4))
+
+
+def check_plan_consumption() -> None:
+    """answer_mode/sub_questions 必须真正改变 Engine 的分派路径。"""
+    import hotspot.api.engine as engine_mod
+
+    print("[2e] query plan consumption")
+
+    class DispatchEngine(engine_mod.Engine):
+        def _ask_local_intent(self, *args, **kwargs):
+            return engine_mod._Turn(route="local", text="local", meta={"mode": "paper_fact"})
+
+        def _ask_compare_intent(self, *args, **kwargs):
+            return engine_mod._Turn(route="local", text="compare", meta={"mode": "compare"})
+
+        def _ask_multi_intent(self, *args, **kwargs):
+            return engine_mod._Turn(route="local", text="multi", meta={"mode": "multi"})
+
+        def _ask_relation_intent(self, *args, **kwargs):
+            return engine_mod._Turn(route="local", text="relation", meta={"mode": "relation"})
+
+    engine = DispatchEngine(cfg={})
+    request = AskRequest.from_dict({
+        "question": "test", "source": "meeting", "dry_run": False,
+    })
+    original = engine_mod.parse_query
+    plans = [
+        (
+            "paper_fact",
+            {
+                "input_class": "valid", "intent": "fact",
+                "answer_mode": "paper_fact", "sub_questions": [],
+            },
+        ),
+        (
+            "compare",
+            {
+                "input_class": "valid", "intent": "compare",
+                "answer_mode": "compare", "requirements": [],
+                "sub_questions": [],
+            },
+        ),
+        (
+            "multi",
+            {
+                "input_class": "valid", "intent": "fact",
+                "answer_mode": "compare",
+                "sub_questions": [
+                    {"id": "q1", "question": "first", "required": True},
+                    {"id": "q2", "question": "second", "required": True},
+                ],
+            },
+        ),
+        (
+            "relation",
+            {
+                "input_class": "valid", "intent": "relation",
+                "answer_mode": "relation", "core_concepts": [],
+                "sub_questions": [],
+            },
+        ),
+    ]
+    try:
+        for expected, plan in plans:
+            engine_mod.parse_query = lambda *args, _plan=plan, **kwargs: _plan
+            turn = engine._ask_intent(
+                request, cfg={}, c=None, client=object(),
+                emit=lambda *args, **kwargs: None,
+            )
+            check(f"{expected} 分派已消费",
+                  turn is not None and turn.meta.get("mode") == expected,
+                  str(turn))
+        engine_mod.parse_query = lambda *args, **kwargs: {
+            "input_class": "out_of_scope", "intent": "trend",
+            "answer_mode": "refuse", "sub_questions": [],
+        }
+        turn = engine._ask_intent(
+            request, cfg={}, c=None, client=object(),
+            emit=lambda *args, **kwargs: None,
+        )
+        check("域外问题在检索前拒答",
+              turn is not None and turn.refused and turn.route == "refuse",
+              str(turn))
+    finally:
+        engine_mod.parse_query = original
+
+
+def check_claim_first() -> None:
+    """结构化 claim 生成必须过滤非法 ID，并由程序统一渲染引用。"""
+    from types import SimpleNamespace
+    from hotspot.reasoning.answer import generate_claim_answer
+    from hotspot.schema import Context, Route
+    from hotspot.api.contract import Verdict
+
+    print("[2f] claim-first answer")
+
+    class ClaimClient:
+        def __init__(self, claims):
+            self.claims = claims
+
+        def ask(self, user, *, system, schema, required, **kwargs):
+            return SimpleNamespace(ok=True, data={"claims": self.claims})
+
+    class FailedClaimClient:
+        def ask(self, user, *, system, schema, required, **kwargs):
+            return SimpleNamespace(ok=False, error="schema violation")
+
+    context = Context(
+        route=Route.LOCAL,
+        body="[P:p3] DPO removes the reward model.\n[P:p4] RLOO reduces variance.",
+        question="Compare DPO and RLOO",
+        allowed_ids=frozenset({"p3", "p4"}),
+    )
+    result = generate_claim_answer(
+        context,
+        cfg={"llm": {"model_pro": "stub"}},
+        client=ClaimClient([
+            {"text": "DPO removes the reward model", "evidence_ids": ["p3"]},
+            {"text": "RLOO reduces variance", "evidence_ids": ["p4", "bad"]},
+        ]),
+    )
+    check("claim-first 生成成功", result.ok, result.reason)
+    check("claim-first 自动渲染引用",
+          result.text
+          == "DPO removes the reward model [P:p3]\nRLOO reduces variance [P:p4]",
+          result.text)
+    check("claim-first 丢弃非法 ID",
+          all("bad" not in item for item in result.claims), str(result.claims))
+
+    failed = generate_claim_answer(
+        context,
+        cfg={"llm": {"model_pro": "stub"}},
+        client=ClaimClient([
+            {"text": "Uncited claim", "evidence_ids": ["bad"]},
+        ]),
+    )
+    check("非法结构化 claim 可回退到合法抽取 claim",
+          failed.ok and "[P:p3]" in failed.text, str(failed))
+
+    extracted = generate_claim_answer(
+        context,
+        cfg={"llm": {"model_pro": "stub"}},
+        client=ClaimClient([]),
+    )
+    check("空结构化结果可使用抽取式 claim",
+          extracted.ok and "[P:p3]" in extracted.text, str(extracted))
+
+    empty_context = Context(
+        route=Route.LOCAL, body="", question="empty",
+        allowed_ids=frozenset(),
+    )
+    no_evidence = generate_claim_answer(
+        empty_context,
+        cfg={"llm": {"model_pro": "stub"}},
+        client=ClaimClient([]),
+    )
+    check("无证据时不冒充答案", not no_evidence.ok, str(no_evidence))
+    failed_output = generate_claim_answer(
+        context,
+        cfg={"llm": {"model_pro": "stub"}},
+        client=FailedClaimClient(),
+    )
+    check("结构化调用失败也使用抽取式 claim",
+          failed_output.ok and "[P:p3]" in failed_output.text,
+          str(failed_output))
+
+    punctuated = generate_claim_answer(
+        context,
+        cfg={"llm": {"model_pro": "stub"}},
+        client=ClaimClient([
+            {"text": "DPO removes the reward model.", "evidence_ids": ["p3"]},
+        ]),
+    )
+    check("引用标记位于句号之前",
+          "[P:p3]." in punctuated.text,
+          punctuated.text)
+
+    cluster_context = Context(
+        route=Route.GLOBAL,
+        body="[C:43] RLHF 热点：偏好反馈与策略优化",
+        question="RLHF 热点",
+        allowed_ids=frozenset({"43"}),
+    )
+    cluster_answer = generate_claim_answer(
+        cluster_context,
+        cfg={"llm": {"model_pro": "stub"}},
+        client=ClaimClient([]),
+    )
+    check("全局卡片可作为抽取 claim",
+          cluster_answer.ok and "[C:43]" in cluster_answer.text,
+          str(cluster_answer))
+    filtered_text, filtered_verdicts = Engine(cfg={})._filter_claim_first_output(
+        [Verdict(status="supported", text="kept [P:p3]")],
+        context,
+        [],
+    )
+    check("契约 verdict 可安全过滤",
+          filtered_text == "kept [P:p3]" and len(filtered_verdicts) == 1,
+          filtered_text)
+
+
 def check_evidence() -> None:
     """core_concepts + anchors + evidence 的最小行为测试。"""
     from types import SimpleNamespace
@@ -264,10 +565,13 @@ def check_evidence() -> None:
             data = {
                 "p1": "RLOO improves REINFORCE leave-one-out baseline variance reduction",
                 "p2": "Quantum algorithms for computing equilibria",
+                "p3": "Direct Preference Optimization removes an explicit reward model",
+                "p4": "RLOO improves sample efficiency for policy optimization",
             }
             return SimpleNamespace(title=data.get(pid, ""), abstract="")
 
     hits = [SimpleNamespace(paper_id="p1"), SimpleNamespace(paper_id="p2")]
+    compare_hits = [SimpleNamespace(paper_id="p3"), SimpleNamespace(paper_id="p4")]
     plan = {
         "intent": "fact",
         "core_concepts": [{
@@ -288,6 +592,71 @@ def check_evidence() -> None:
     }
     check("缺 anchor 不冒充回答",
           evaluate(Corpus(), hits, plan2).decision == "insufficient_evidence")
+    paraphrased = dict(
+        plan,
+        requirements=[{
+            "kind": "method",
+            "value": "critic-free advantage estimation",
+            "required": True,
+        }],
+    )
+    paraphrased_result = evaluate(Corpus(), hits, paraphrased)
+    check("方法需求改写不硬拒",
+          paraphrased_result.decision == "answer"
+          and paraphrased_result.requirement_results[0]["satisfied"] is False,
+          paraphrased_result.to_dict())
+
+    compare_plan = {
+        "answer_mode": "compare",
+        "intent": "compare",
+        "core_concepts": [
+            {
+                "name": "DPO",
+                "aliases": ["DPO", "Direct Preference Optimization"],
+                "required": True,
+            },
+            {
+                "name": "RLOO",
+                "aliases": ["RLOO", "REINFORCE leave-one-out"],
+                "required": True,
+            },
+        ],
+        "requirements": [
+            {"kind": "comparison_side", "value": "DPO", "required": True},
+            {"kind": "comparison_side", "value": "RLOO", "required": True},
+        ],
+        "anchors": [],
+    }
+    compare_result = evaluate(Corpus(), compare_hits, compare_plan)
+    check("对比双方可来自不同论文",
+          compare_result.decision == "answer", compare_result.to_dict())
+    check("需求矩阵记录两侧证据",
+          len(compare_result.requirement_results) == 2
+          and all(r["satisfied"] and r["paper_ids"] for r in compare_result.requirement_results),
+          compare_result.to_dict())
+    metric_missing = dict(
+        compare_plan,
+        requirements=[
+            {"kind": "comparison_side", "value": "DPO", "required": True},
+            {"kind": "comparison_side", "value": "RLOO", "required": True},
+            {"kind": "metric", "value": "wall-clock efficiency", "required": True},
+        ],
+    )
+    metric_result = evaluate(Corpus(), compare_hits, metric_missing)
+    check("对比指标缺失不否决两侧证据",
+          metric_result.decision == "answer"
+          and metric_result.requirement_results[-1]["satisfied"] is False,
+          metric_result.to_dict())
+
+    missing_side = dict(
+        compare_plan,
+        requirements=[
+            {"kind": "comparison_side", "value": "DPO", "required": True},
+            {"kind": "comparison_side", "value": "SimPO", "required": True},
+        ],
+    )
+    check("缺一侧对比证据要求澄清",
+          evaluate(Corpus(), compare_hits, missing_side).decision == "clarify")
 
     from hotspot.api.engine import Engine
     cfg = {"api": {"min_answer_chars": 20}}
@@ -295,6 +664,19 @@ def check_evidence() -> None:
     check("无引用答案无效", not Engine._answer_is_valid("这是一段足够长但没有引用的答案文本", cfg))
     check("有引用答案有效",
           Engine._answer_is_valid("这是一段足够长并且引用了论文的答案文本 [P:p1]", cfg))
+    from hotspot.reasoning import verify
+    extractive = verify.parse_claims("证据直接来自论文摘要 [P:p1]")
+    check("抽句式降级答案免远端校验",
+          Engine._fallback_verdicts(extractive, frozenset({"p1"}))[0].status
+          == "supported")
+    lexical = verify.parse_claims(
+        "RLOO improves sample efficiency [P:p4]"
+    )
+    check("校验超时可用本地词面兜底",
+          Engine._lexical_verdicts(
+              lexical, frozenset({"p4"}),
+              {"p4": "RLOO improves sample efficiency"},
+          )[0].status == "supported")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -320,6 +702,12 @@ def main() -> int:
     check_search_semantics()
     print()
     check_hybrid()
+    print()
+    check_query_plan()
+    print()
+    check_plan_consumption()
+    print()
+    check_claim_first()
     print()
     check_evidence()
     print()

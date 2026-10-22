@@ -46,6 +46,7 @@ class EvidenceResult:
     best_concept_coverage: float = 0.0
     score: float = 0.0
     evidence_id: str = ""
+    requirement_results: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -57,7 +58,69 @@ class EvidenceResult:
             "best_concept_coverage": self.best_concept_coverage,
             "score": self.score,
             "evidence_id": self.evidence_id,
+            "requirement_results": [dict(r) for r in self.requirement_results],
         }
+
+
+def _requirement_phrases(value: str, concepts: list[dict]) -> list[str]:
+    """Expand a requirement with aliases of an equivalent core concept."""
+    needle = (value or "").strip().casefold()
+    if not needle:
+        return []
+    phrases = [value]
+    for concept in concepts:
+        names = [
+            str(concept.get("name") or ""),
+            *[str(x) for x in (concept.get("aliases") or []) if str(x).strip()],
+        ]
+        if needle in {x.casefold() for x in names if x}:
+            phrases.extend(x for x in names if x)
+            break
+    return list(dict.fromkeys(x for x in phrases if x))
+
+
+def _evaluate_requirements(
+    candidates: list[dict[str, Any]], plan: dict, concepts: list[dict],
+) -> list[dict[str, Any]]:
+    """Evaluate semantic requirements independently of the best single paper."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for req in (plan.get("requirements") or [])[:12]:
+        if not isinstance(req, dict):
+            continue
+        kind = str(req.get("kind") or "other").strip().lower()
+        value = str(req.get("value") or "").strip()
+        if not value:
+            continue
+        key = f"{kind}:{value.casefold()}"
+        if key in seen:
+            continue
+        seen.add(key)
+        phrases = _requirement_phrases(value, concepts)
+        matched_ids: list[str] = []
+        for candidate in candidates:
+            paper = candidate.get("paper")
+            matched = False
+            if kind == "time":
+                years = [int(y) for y in re.findall(r"\b(?:19|20)\d{2}\b", value)]
+                matched = bool(years) and getattr(paper, "year", None) in years
+            elif kind == "venue":
+                venue = str(getattr(paper, "venue", "") or "")
+                matched = bool(venue) and _phrase_match(venue, value)
+            else:
+                matched = any(
+                    _phrase_match(candidate.get("text") or "", p) for p in phrases
+                )
+            if matched:
+                matched_ids.append(str(candidate.get("paper_id") or ""))
+        out.append({
+            "kind": kind,
+            "value": value,
+            "required": bool(req.get("required", True)),
+            "satisfied": bool(matched_ids),
+            "paper_ids": list(dict.fromkeys(pid for pid in matched_ids if pid)),
+        })
+    return out
 
 
 def evaluate(
@@ -79,6 +142,7 @@ def evaluate(
     ]
     anchors = [str(a) for a in (plan.get("anchors") or []) if str(a).strip()]
     intent = str(plan.get("intent") or "fact")
+    answer_mode = str(plan.get("answer_mode") or "")
     if not concepts and not anchors:
         return EvidenceResult("answer", "no structured concept gate",
                               score=0.0)
@@ -108,6 +172,8 @@ def evaluate(
         score = (0.5 if required_ok else 0.0) + (0.3 if anchor_ok else 0.0) + 0.2 * cov
         candidates.append({
             "paper_id": pid,
+            "paper": p,
+            "text": text,
             "matched": matched,
             "matched_anchors": matched_anchors,
             "coverage": cov,
@@ -122,12 +188,55 @@ def evaluate(
         return EvidenceResult("out_of_scope", "没有可检查的候选论文")
 
     candidates.sort(key=lambda x: (x["score"], x["coverage"]), reverse=True)
+    requirement_results = _evaluate_requirements(candidates, plan, concepts)
+    requirement_hits = {
+        str(candidate["paper_id"]): sum(
+            str(candidate["paper_id"]) in r["paper_ids"]
+            for r in requirement_results if r["required"]
+        )
+        for candidate in candidates
+    }
+    candidates.sort(
+        key=lambda x: (
+            requirement_hits.get(str(x["paper_id"]), 0),
+            x["score"],
+            x["coverage"],
+        ),
+        reverse=True,
+    )
     best = candidates[0]
     best_id = str(best["paper_id"])
     matched_union = set().union(*(set(c["matched"]) for c in candidates))
     anchors_union = set().union(*(set(c["matched_anchors"]) for c in candidates))
     required = {str(c["name"]) for c in concepts if c.get("required")}
     snippet_ok = bool(best["snippet"].strip())
+    result_kw = {"requirement_results": tuple(requirement_results)}
+
+    # 语义需求常用于组织答案和提示缺失项；只有对比对象是硬约束。
+    # 方法/指标名称常被论文改写，逐字硬门控会造成大面积误拒。
+    hard_requirement_kinds = {"comparison_side"}
+    enforce_requirements = (
+        answer_mode in {"paper_fact", "compare"}
+        or intent in {"fact", "compare"}
+    )
+    missing_requirements = [
+        r for r in requirement_results
+        if (enforce_requirements and r["required"]
+            and r["kind"] in hard_requirement_kinds and not r["satisfied"])
+    ]
+    if missing_requirements:
+        missing_text = "、".join(
+            f"{r['kind']}:{r['value']}" for r in missing_requirements
+        )
+        has_comparison = any(r["kind"] == "comparison_side" for r in requirement_results)
+        return EvidenceResult(
+            "clarify" if has_comparison else "insufficient_evidence",
+            f"缺少需求证据：{missing_text}",
+            tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
+            (best["snippet"],) if snippet_ok else (),
+            best["coverage"], best["score"],
+            evidence_id=best_id, **result_kw,
+        )
 
     missing_anchors = [a for a in anchors if a not in anchors_union]
     if anchors and missing_anchors:
@@ -137,7 +246,7 @@ def evaluate(
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
-            evidence_id=best_id,
+            evidence_id=best_id, **result_kw,
         )
     # An explicit anchor is the hard entity constraint. Without an anchor,
     # required concepts remain mandatory.
@@ -148,7 +257,7 @@ def evaluate(
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
-            evidence_id=best_id,
+            evidence_id=best_id, **result_kw,
         )
     if intent in {"fact", "compare"} and not anchors and best["coverage"] < 0.5:
         return EvidenceResult(
@@ -157,27 +266,28 @@ def evaluate(
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
-            evidence_id=best_id,
+            evidence_id=best_id, **result_kw,
         )
-    if intent == "compare" and len(concepts) >= 2 and best["coverage"] < 1.0:
+    if (intent == "compare" and not requirement_results
+            and len(concepts) >= 2 and best["coverage"] < 1.0):
         return EvidenceResult(
             "clarify",
             "对比对象至少在单篇候选证据中未同时出现",
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (best["snippet"],) if snippet_ok else (),
             best["coverage"], best["score"],
-            evidence_id=best_id,
+            evidence_id=best_id, **result_kw,
         )
     if not snippet_ok:
         return EvidenceResult(
             "insufficient_evidence", "候选摘要没有可用证据片段",
             tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
             (), best["coverage"], best["score"],
-            evidence_id=best_id,
+            evidence_id=best_id, **result_kw,
         )
     return EvidenceResult(
-        "answer", "概念/锚点与摘要证据满足",
+        "answer", "概念/锚点与需求矩阵证据满足",
         tuple(sorted(matched_union)), tuple(sorted(anchors_union)),
         (best["snippet"],), best["coverage"], best["score"],
-        evidence_id=best_id,
+        evidence_id=best_id, **result_kw,
     )

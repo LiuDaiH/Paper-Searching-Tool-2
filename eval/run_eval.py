@@ -6,6 +6,9 @@
     python eval/run_eval.py --questions eval/questions.json --group g0
     # 真调：走 `config.yaml` 的 `llm_eval`（kimi-k3）+ 该组开关
     python eval/run_eval.py --questions eval/questions.json --group g1 --live
+    # 冷缓存评测：隔离 LLM 缓存，避免复用历史答案
+    python eval/run_eval.py --group g0 --live \
+        --llm-cache-dir workspace/ledger/llm_cache_g0
 
 组（`--group`）：g0=无大创 / g1=只 rlRAG / g2=只 Streit-Garg / g3=全接入。
 同 4 项指标（§5.3）：Cost per Query / Citation Support / Hallucination / 拒答正确率。
@@ -16,9 +19,11 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -26,6 +31,9 @@ import hotspot  # noqa: E402 —— 装闸① + 接线
 
 from hotspot.config import load_config, paths_from
 from hotspot.api import AskRequest, Engine  # noqa: E402
+from hotspot.api.contract import ApiError, E_CORPUS_UNAVAILABLE  # noqa: E402
+from hotspot.retrieval.assemble import SYSTEM_PROMPT  # noqa: E402
+from hotspot.subcluster import PARSE_SCHEMA  # noqa: E402
 
 GROUPS = {
     "g0": dict(rlrag=False, sg=False),
@@ -33,6 +41,9 @@ GROUPS = {
     "g2": dict(rlrag=False, sg=True),
     "g3": dict(rlrag=True, sg=True),
 }
+
+TRACE_VERSION = "1"
+_TRACE_STAGES = ("parse", "retrieve", "name", "answer", "verify")
 
 #: 「拒答」语义标记——模型回「本库无相关内容」这类，即便未走 refused 通道也算正确拒答
 _REFUSAL_TEXT = ("本库无相关", "本库没有", "本库无法", "本库不包含",
@@ -99,6 +110,162 @@ def _mean(vals: list) -> float | None:
     return (sum(v) / len(v)) if v else None
 
 
+def _sha256(value) -> str:
+    raw = value if isinstance(value, str) else json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _trace_sanitize(value, *, key: str = ""):
+    """Trace 不落完整摘要/答案正文；文本只保留长度与指纹。"""
+    if key in {"snippets", "abstract", "body", "answer_text"}:
+        if isinstance(value, list):
+            return [
+                {"chars": len(str(x)), "sha256": _sha256(str(x))}
+                for x in value
+            ]
+        text = str(value or "")
+        return {"chars": len(text), "sha256": _sha256(text)}
+    if isinstance(value, dict):
+        return {
+            str(k): _trace_sanitize(v, key=str(k))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_trace_sanitize(v, key=key) for v in value]
+    return value
+
+
+def _trace_prompt_versions() -> dict:
+    return {
+        "answer_system_sha256": _sha256(SYSTEM_PROMPT),
+        "parse_schema_sha256": _sha256(PARSE_SCHEMA),
+    }
+
+
+def _trace_config(cfg: dict) -> dict:
+    safe = copy.deepcopy(cfg)
+    llm = safe.get("llm") or {}
+    llm.pop("api_key", None)
+    safe["llm"] = llm
+    return {
+        "sha256": _sha256(safe),
+        "model": str(llm.get("model_pro") or llm.get("model_flash") or ""),
+        "base_url": str(llm.get("base_url") or ""),
+        "rlrag": bool((cfg.get("rlrag") or {}).get("enabled", False)),
+        "streit_garg": bool((cfg.get("streit_garg") or {}).get("enabled", False)),
+    }
+
+
+def _trace_actions(meta: dict, metrics: dict, resp=None) -> list[dict]:
+    stages = (meta.get("usage") or {}).get("stages") or {}
+    plan = meta.get("plan") or {}
+    retrieval = _trace_sanitize(meta.get("retrieval") or {})
+    evidence = _trace_sanitize(meta.get("evidence") or {})
+    observations = {
+        "parse": {"plan": _trace_sanitize(plan)},
+        "retrieve": {"retrieval": retrieval, "evidence": evidence},
+        "name": {
+            "topics": [
+                {"cluster_id": t.cluster_id, "label": t.label, "size": t.size}
+                for t in (getattr(resp, "topics", []) or [])
+            ]
+            if resp is not None else [],
+        },
+        "answer": {
+            "route": getattr(resp, "route", None),
+            "refused": getattr(resp, "refused", None),
+            "answer_chars": len(getattr(resp, "text", "") or ""),
+            "citation_ids": [c.id for c in (getattr(resp, "citations", []) or [])],
+        } if resp is not None else {},
+        "verify": {"metrics": metrics},
+    }
+    out = []
+    for name in _TRACE_STAGES:
+        start = stages.get(f"{name}_start")
+        end = stages.get(name)
+        if start is None and end is None:
+            continue
+        out.append({
+            "name": name,
+            "params": {},
+            "observation": observations.get(name, {}),
+            "elapsed": (
+                round(float(end) - float(start), 3)
+                if start is not None and end is not None else None
+            ),
+        })
+    return out
+
+
+def _trace_record(*, item: dict, row: dict, resp, cfg: dict, group: str) -> dict:
+    meta = dict(getattr(resp, "meta", {}) or {})
+    usage = getattr(resp, "usage", None)
+    if usage is not None:
+        meta["usage"] = usage.to_dict()
+    metrics = row.get("metrics") or {}
+    return {
+        "trace_version": TRACE_VERSION,
+        "at": datetime.now(timezone.utc).isoformat(),
+        "group": group,
+        "request_id": getattr(resp, "request_id", None),
+        "question": str(item.get("question") or ""),
+        "question_id": item.get("id"),
+        "question_type": item.get("type"),
+        "source": getattr(resp, "source", None),
+        "mode": getattr(resp, "mode", None),
+        "plan": _trace_sanitize(meta.get("plan") or {}),
+        "actions": _trace_actions(meta, metrics, resp),
+        "prompt_versions": _trace_prompt_versions(),
+        "model_config": _trace_config(cfg),
+        "outcome": {
+            "route": getattr(resp, "route", None),
+            "refused": getattr(resp, "refused", None),
+            "refuse_reason": getattr(resp, "refuse_reason", ""),
+            "latency_s": getattr(usage, "elapsed_s", None) if usage else None,
+            "cost_yuan": getattr(usage, "cost_yuan", None) if usage else None,
+            "warnings": list(getattr(resp, "warnings", []) or []),
+            "error": getattr(resp, "error", None),
+            "metrics": metrics,
+        },
+    }
+
+
+def _trace_error_record(*, item: dict, row: dict, cfg: dict, group: str) -> dict:
+    return {
+        "trace_version": TRACE_VERSION,
+        "at": datetime.now(timezone.utc).isoformat(),
+        "group": group,
+        "request_id": None,
+        "question": str(item.get("question") or ""),
+        "question_id": item.get("id"),
+        "question_type": item.get("type"),
+        "source": "meeting",
+        "mode": "new",
+        "plan": {},
+        "actions": [],
+        "prompt_versions": _trace_prompt_versions(),
+        "model_config": _trace_config(cfg),
+        "outcome": {
+            "route": None,
+            "refused": False,
+            "refuse_reason": "",
+            "latency_s": None,
+            "cost_yuan": None,
+            "warnings": [],
+            "error": row.get("error"),
+            "metrics": {},
+        },
+    }
+
+
+def _append_trace(path: Path, record: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--questions", default="eval/questions.json")
@@ -110,14 +277,36 @@ def main() -> int:
                     help="读取 --out 中已有的 partial rows，跳过已完成题")
     ap.add_argument("--resume-from", default=None,
                     help="配合 --resume；从该题 id 开始重跑，丢弃它及之后的旧结果")
+    ap.add_argument("--llm-cache-dir", default=None,
+                    help="覆盖 dasc LLM 缓存目录，用于冷缓存/分组隔离评测")
+    ap.add_argument("--llm-egress-log", default=None,
+                    help="覆盖 LLM 出境审计日志路径，便于分组留存")
+    ap.add_argument("--trace-out", default=None,
+                    help="append-only JSONL Trace；默认 workspace/ledger/retrieval_trace.jsonl")
+    ap.add_argument("--llm-timeout", type=float, default=None,
+                    help="覆盖本次评测的 LLM 单请求超时秒数")
     a = ap.parse_args()
 
+    if a.llm_cache_dir or a.llm_egress_log:
+        import dasc.llm.client as llm_client  # noqa: PLC0415
+
+        if a.llm_cache_dir:
+            llm_client.CACHE_DIR = Path(a.llm_cache_dir)
+        if a.llm_egress_log:
+            llm_client.EGRESS_LOG = Path(a.llm_egress_log)
+
     ec, gflags = _eval_cfg(a.group)
+    if a.llm_timeout is not None:
+        ec.setdefault("llm", {})["timeout"] = max(1.0, float(a.llm_timeout))
     engine = Engine(cfg=ec)
     qs = json.loads(Path(a.questions).read_text(encoding="utf-8"))
     ws = paths_from(ec)["workspace"]
     out = Path(a.out) if a.out else ws / "ledger" / f"eval_{a.group}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
+    trace_out = (
+        Path(a.trace_out) if a.trace_out
+        else ws / "ledger" / "retrieval_trace.jsonl"
+    )
 
     rows: list[dict] = []
     if a.resume and out.exists():
@@ -144,6 +333,7 @@ def main() -> int:
     for item in qs:
         if str(item.get("id") or "") in completed:
             continue
+        resp = None
         try:
             resp = engine.ask(AskRequest.from_dict({
                 "question": item["question"],
@@ -166,12 +356,31 @@ def main() -> int:
             if not resp.refused and not (resp.text or "").strip():
                 row["error"] = "空答案（LLM 调用未返回内容，疑似端点失败）"
                 row["metrics"] = {}
+        except ApiError as e:
+            if e.code == E_CORPUS_UNAVAILABLE:
+                raise RuntimeError(f"评测中止：{e.message}") from e
+            row = {
+                "id": item["id"], "type": item["type"],
+                "error": f"{type(e).__name__}: {e}",
+                "route": None, "refused": False, "answer": "",
+                "verdicts": [], "metrics": {},
+            }
         except Exception as e:  # noqa: BLE001 —— 单题失败不中断评测，记 error 继续
             row = {"id": item["id"], "type": item["type"], "error": f"{type(e).__name__}: {e}",
                    "route": None, "refused": False, "answer": "", "verdicts": [],
                    "metrics": {}}
         rows.append(row)
         write_progress()
+        trace = (
+            _trace_record(
+                item=item, row=row, resp=resp, cfg=ec, group=a.group,
+            )
+            if resp is not None
+            else _trace_error_record(
+                item=item, row=row, cfg=ec, group=a.group,
+            )
+        )
+        _append_trace(trace_out, trace)
         if row.get("error"):
             print(f"[{a.group}/{item['id']}/{item['type']}] ERROR {row['error'][:120]}")
         else:

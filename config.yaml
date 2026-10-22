@@ -19,7 +19,7 @@ corpus:
   sources:
     - G:\rl_data24\资源\papers.jsonl
     - G:\rl_data\资源\papers.jsonl
-  # arXiv 周报连续流（独立源，共享引擎，规划-接入arXiv周报与发布.md）。
+  # arXiv 周报连续流（独立源，共享引擎，2026-10-02-规划-接入arXiv周报与发布.md）。
   # venue 恒 "arXiv"；另带 topics(分类) / first_seen(入库日) → 支持「本周新增」。
   # 只读外部库，本工程一个字都不写它。
   arxiv_source: D:\大学编程学习\arXiv周报\数据\papers.jsonl
@@ -96,6 +96,7 @@ api:
   max_evidence: 8               # 进上下文的证据论文条数
   evidence_chars: 300           # 每篇证据摘要保留多少字符
   min_answer_chars: 20          # evidence=answer 后，答案至少包含的字符数
+  verify_timeout_s: 30          # 远端引用校验超时后，转本地词面校验
   followup_papers: 4            # 追问时把前文引用过的几篇论文并进上下文（0=不带）
 
 spread:
@@ -112,7 +113,7 @@ spread:
   # CoRL 是机器人专会，不属于这条时间轴，另算。
   venue_off_axis: [CoRL]
 
-# ── 大创两线接入主路径的开关（评测 G0-G3，测试计划-大创接入评测.md）──────────
+# ── 大创两线接入主路径的开关（评测 G0-G3，2026-09-30-测试计划-大创接入评测.md）──────────
 #   enabled=false = G0 无大创（默认，保持现状）；评测时按组开。
 #   rlrag: 检索候选按 RF 未来被引概率重排 + 簇代表取 RF 最高。
 #   streit_garg: 对检索集合算 MPS 关键路径（该读顺序），供上下文构建/展示。
