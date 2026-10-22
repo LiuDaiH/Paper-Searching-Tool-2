@@ -50,15 +50,14 @@ tags: [索引, 说明书]
 
 | 目录 | 直接脚本（入口见各 _index） |
 |---|---|
-| `hotspot/` | config / direction / llm / schema（主导包见其 §3 子包表） |
-| `hotspot/structure/` | embed / cluster / venue_matrix |
-| `hotspot/compress/` | cluster_card |
-| `hotspot/retrieval/` | router / rewrite / assemble / vector / hybrid / coverage |
+| `hotspot/` | config / corpus / llm / schema（主导包见其 §3 子包表） |
+| `hotspot/structure/` | embed / venue_matrix |
+| `hotspot/retrieval/` | assemble（新检索栈待建） |
 | `hotspot/reasoning/` | answer / verify / evidence |
 | `hotspot/api/` | contract / engine / http（**前端唯一接口面**） |
 | `hotspot/ui/` | app / store |
-| `scripts/` | check_access / check_direction / check_tree / check_api / run_server |
-| `eval/` | run_eval / retrieval_eval |
+| `scripts/` | check_access / check_tree / check_api / run_server |
+| `eval/` | 问题集与工具 fixture（执行器待 v2 重建） |
 
 > 每条脚本一行功能取自其 **docstring 首句**（单一源，README 不另写全文）；`scripts/check_tree.py` 会**自检**这些清单与磁盘 `.py` 是否一致。
 
@@ -109,10 +108,10 @@ tags: [索引, 说明书]
 
 | 层 | 名称 | 目录 | LLM |
 |---|---|---|---|
-| L1 | 语料层 | `hotspot/direction.py` | ❌ |
-| L2 | 结构层 | `hotspot/structure/`（embed/cluster/venue_matrix） | ❌ 0 token |
-| L3 | 压缩层 | `hotspot/compress/` | ✅ **唯一花钱处** |
-| L4 | 检索层 | `hotspot/retrieval/` | ✅ 在线（轻量：路由+改写） |
+| L1 | 语料层 | `hotspot/corpus.py` | ❌ |
+| L2 | 结构层 | `hotspot/structure/`（embed/venue_matrix） | ❌ 0 token |
+| L3 | 主题/候选工具 | v2 待建 | 待定 |
+| L4 | 检索层 | `hotspot/retrieval/`（v2 待建） | 待定 |
 | L5 | 推理层 | `hotspot/reasoning/` | ✅ |
 | L6 | 交互层 | `hotspot/ui/app.py` | ❌ |
 

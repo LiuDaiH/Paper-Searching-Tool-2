@@ -12,7 +12,8 @@
 
 ## 0. 三行看懂这个项目
 
-本地论文库（22,747 篇会议论文）的研究热点挖掘：`L1 语料 → L2 向量/聚类 → L3 簇卡片 → L4 检索 → L5 带引用回答`。
+本地论文库（22,747 篇会议论文）的研究助手。当前处于 v2 重建：旧检索/聚类/路由已删除，
+保留语料、embedding、证据与引用校验；新工具链尚未接入。
 对外**只有 2 个接口**：`hotspot/api` 的 `meta`（能力/参数）与 `ask`（问一次）。
 三种消费者：Streamlit（`hotspot/ui/`）、HTTP 网页（`web/` + `scripts/run_server.py`）、脚本/评测（`scripts/`、`eval/`）。
 **前端只准 import `hotspot.api`，算法内部随便改**——这条边界是 2026-10-18 定的，别再拆。
@@ -23,12 +24,12 @@
 |---|---|---|
 | 改接口 / 加返回字段 / 加参数 | `规划/2026-10-18-接口契约-前端与算法.md` §4–§5 → `hotspot/api/contract.py` → `hotspot/api/engine.py` 的 `Engine.ask` | 不用读 `ui/`、不用读算法内部 |
 | 改前端页面 / 接账号系统 | `hotspot/api/_index.md` → 契约文档 §8 → `hotspot/ui/app.py`（Streamlit）或 `web/index.html`（HTTP） | 不用读 `subcluster`/`retrieval` |
-| 换/调被引预测模型（RF 对比） | `hotspot/_index.md` 的 `rlr.py` 条 → `hotspot/rlr.py` → `hotspot/subcluster.py` 里 `rlrag` 那几段 → `eval/run_eval.py` | 接口不用改；新指标加成响应字段即可 |
+| 恢复旧大创算法做对照 | Git commit `b517988` | 当前分支已删除，不用磁盘旧路径猜 |
 | 提速（向量/聚类） | `hotspot/structure/_index.md` → `structure/embed.py` → `structure/cluster.py` → `retrieval/vector.py` | 不动 `ui/` 与契约 |
-| 改检索 / 路由 / 召回 | `hotspot/retrieval/_index.md` → `router.py` → `rewrite.py` → `bm25.py` → `assemble.py` | `assemble.py` 的前缀顺序是缓存契约，别乱动 |
+| 重建检索 / 路由 / 召回 | `规划/2026-10-21-...` → `hotspot/retrieval/_index.md` | 当前分支没有旧 hybrid/router，禁止恢复 `subcluster_adaptive` |
 | 改引用校验（防幻觉） | `hotspot/reasoning/_index.md` → `verify.py` | 四态 `supported/unsupported/missing_id/no_citation` **不许合并** |
 | 跑数据 / 评测 | `scripts/_index.md`、`eval/_index.md` → `eval/run_eval.py` | 不要读 `workspace/` 产物 |
-| 排查「拒答 / 没结果」 | `hotspot/api/engine.py` 的 `_ask_legacy`（注意 `has_cn` 分支） → `direction.select` → `config.yaml` 的 `retrieval` | 先看 `refuse_reason` 与 `warnings`，别猜 |
+| 排查「拒答 / 没结果」 | `hotspot/api/engine.py`（当前为重建壳） → `STATUS.md` | 旧拒答链已删除；先确认是否在新工具链接入前 |
 | 写周报 / 日志 / 回写索引 | `.claude/skills/research-log`、`.claude/skills/folder-readme` → `日志/` 最新一篇 | 只读最近 1 篇，不要通读历史 |
 
 ## 2. 不要读（省 token，而且会误导判断）
@@ -70,7 +71,7 @@ git ls-files | grep -i "检索\|retrieval"
 
 | 文件 | 行数 | 先 grep 这些入口 |
 |---|---|---|
-| `hotspot/api/engine.py` | 839 | `Engine.meta` / `Engine.ask` / `_ask_intent` / `_ask_legacy` / `_ask_followup` / `_graph_from_kp` / `_usage_delta` |
+| `hotspot/api/engine.py` | 重建壳 | `Engine.meta` / `Engine.ask` |
 | `hotspot/api/contract.py` | 574 | `AskRequest` / `AskResponse` / `PARAM_SPEC` / `apply_params` |
 | `hotspot/ui/app.py` | 397 | `_run_with_progress` / `_render_assistant` / `main` |
 | `hotspot/schema.py` | 339 | `SpreadState`（三态红线）/ `Answer` / `Context` |
@@ -89,7 +90,7 @@ python scripts/check_tree.py --vault .   # 索引树：悬空链接 / 孤儿 md 
 
 ## 6. 接口红线（2026-10-18 起）
 
-1. 前端只准 import `hotspot.api`（或走 HTTP），不准 import `subcluster` / `retrieval.*` / `reasoning.*` / `schema`。
+1. 前端只准 import `hotspot.api`（或走 HTTP），不准 import 算法内部模块。
 2. **只增不改**：加字段必须带默认值；删/改语义必须换 `CONTRACT_VERSION` 并写迁移说明。
 3. 加可调参数 → 只改 `contract.py` 的 `PARAM_SPEC` + `config.yaml` 默认值，前端设置页自动出现。
 4. 引擎**无会话状态**：历史与每用户 `api_key` 都随请求带，别在服务层存状态。
