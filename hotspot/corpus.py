@@ -2,7 +2,7 @@
 
 读 G 盘两份 `papers.jsonl`（`G:\\rl_data24\\资源` + `G:\\rl_data\\资源`），并成
 一套 22,747 篇的 `MergedCorpus`，接口与 `dasc.Corpus` 兼容（`list_papers` / `get`
-/ `search` / `stats` + no-op `lib`），供 direction / embed / cluster / ui 使用。
+/ `search` / `stats` + no-op `lib`），供 embedding、工具和 UI 使用。
 
 **保留 `year` 分组能力**：每篇 `Paper.year`（2024/2025）都在；`list_papers(year=...)`
 可按年筛；簇的跨会三态默认为**跨年混合**，但 `VenueProfile.counts_by_year` 保留

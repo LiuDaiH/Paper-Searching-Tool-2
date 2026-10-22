@@ -23,6 +23,7 @@ L5 推理层：带引用生成答案 + 引用校验（防幻觉最后防线）�
 ## 脚本速查
 
 - `answer.py` —— L5 带引用生成答案（强制 `[P:id]` / `[C:id]`）。
+- `grounding.py` —— 强制证据校验、引用渲染和 citation DTO 生成。
 - `verify.py` —— L5 引用校验：missing_id / unsupported 分开判，防幻觉。
 - `evidence.py` —— L5.5 可答性证据：core_concepts/anchors 匹配、摘要片段、answer/insufficient/clarify/out_of_scope 决策。
 

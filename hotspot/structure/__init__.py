@@ -3,6 +3,5 @@
 **0 token** —— 全部是向量/计数/矩阵运算，可复现、可验证、零成本、零幻觉。
 
 - :mod:`.embed` —— 分块向量化（bge-m3，CPU，可续跑）
-- :mod:`.cluster` —— PCA 白化 + HDBSCAN
 - :mod:`.venue_matrix` —— 跨会扩散三态矩阵（方案 §3.2）
 """
