@@ -134,8 +134,13 @@ async function loadMeta() {
   const m = await r.json();
   state.meta = m;
   $("#ver").textContent = m.contract_version || "?";
-  $("#source").innerHTML = (m.sources || []).map(s =>
-    `<option value="${esc(s.key)}">${esc(s.label)}（${(s.papers || 0).toLocaleString()} 篇）</option>`).join("");
+  $("#source").innerHTML = (m.sources || []).map(s => {
+    const unavailable = (s.note || "").includes("索引未构建");
+    const suffix = unavailable ? " · 索引未构建" : `（${(s.papers || 0).toLocaleString()} 篇）`;
+    return `<option value="${esc(s.key)}" ${unavailable ? "disabled" : ""}>${esc(s.label)}${esc(suffix)}</option>`;
+  }).join("");
+  const firstAvailable = (m.sources || []).find(s => !(s.note || "").includes("索引未构建"));
+  if (firstAvailable) $("#source").value = firstAvailable.key;
   // 参数表 → 表单（分组建控件，前端不应硬编码参数名）
   const groups = {};
   (m.params || []).forEach(p => (groups[p.group] = groups[p.group] || []).push(p));

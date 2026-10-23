@@ -24,6 +24,7 @@ from ..reasoning.grounding import (
 )
 from .contract import (
     E_CORPUS_UNAVAILABLE,
+    E_INDEX_UNAVAILABLE,
     E_INTERNAL,
     E_NO_API_KEY,
     PARAM_SPEC,
@@ -34,6 +35,7 @@ from .contract import (
     MetaResponse,
     SourceInfo,
     Usage,
+    apply_params,
     new_request_id,
     stage_event,
 )
@@ -78,14 +80,20 @@ class Engine:
             try:
                 stats = self._corpus(key).stats()
                 info.papers = int(stats.get("papers") or 0)
+                if not LancePaperStore(self._cfg, source=key).available:
+                    info.note = "LanceDB 索引未构建，暂不可检索"
             except ApiError as exc:
                 info.note = exc.message
                 out.warnings.append(exc.message)
             out.sources.append(info)
         out.capabilities = {
-            "algorithm_v2_rebuilding": True,
+            "algorithm_version": "2",
+            "agent": "pydantic-ai",
+            "retrieval": "lancedb-vector+fts",
+            "topic_snapshot": True,
+            "trace": True,
             "stream": True,
-            "dry_run": True,
+            "dry_run": False,
             "sources": list(SOURCES),
         }
         return out
@@ -99,6 +107,7 @@ class Engine:
         started = time.perf_counter()
         cfg = copy.deepcopy(self._cfg)
         req.llm.apply_to(cfg)
+        apply_params(cfg, req.params)
 
         def finish(response: AskResponse, run=None) -> AskResponse:
             actions = list(run.deps.events) if run is not None else []
@@ -146,8 +155,9 @@ class Engine:
         store = LancePaperStore(cfg, source=req.source)
         if not store.available:
             raise ApiError(
-                E_INTERNAL,
-                "LanceDB 索引不存在；先运行 scripts/build_lance_index.py",
+                E_INDEX_UNAVAILABLE,
+                f"数据源 {req.source!r} 的 LanceDB 索引不存在；"
+                "先运行 scripts/build_lance_index.py",
                 status=503,
             )
         if req.dry_run:
@@ -235,6 +245,9 @@ class Engine:
             citations=make_citations(corpus, grounded.citation_ids),
             warnings=list(run.answer.limitations),
             usage=Usage(
+                llm_calls=int(run.usage.get("requests") or 0),
+                tokens_in=int(run.usage.get("input_tokens") or 0),
+                tokens_out=int(run.usage.get("output_tokens") or 0),
                 elapsed_s=elapsed,
                 stages={
                     "retrieve": 0.0,

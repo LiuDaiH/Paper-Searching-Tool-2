@@ -1,0 +1,18 @@
+[
+  {"id":"a_l01","type":"local","question":"RLOO 的核心创新点是什么？"},
+  {"id":"a_l04","type":"local","question":"Dreamer 系列的模型结构要点是什么？"},
+  {"id":"a_l09","type":"local","question":"reward hacking 和 reward overoptimization 有哪些缓解手段？"},
+  {"id":"a_l13","type":"local","question":"稳健强化学习的主要方法有哪些？"},
+  {"id":"a_l14","type":"local","question":"visuomotor policy 的输入表示一般怎么设计？"},
+  {"id":"a_c01","type":"compare","question":"GRPO 相比 PPO 改了什么？"},
+  {"id":"a_c02","type":"compare","question":"token 级 DPO 与句子级 DPO 的差别在哪里？"},
+  {"id":"a_c03","type":"compare","question":"TD3 和 SAC 在连续控制上的核心差异是什么？"},
+  {"id":"a_r01","type":"relation","question":"PPO 和 GRPO 的共同来源是什么？"},
+  {"id":"a_r02","type":"relation","question":"RLHF 和 DPO 的共同来源或理论根基是什么？"},
+  {"id":"a_r04","type":"relation","question":"逆强化学习与偏好学习在理论和方法上的共同来源是什么？"},
+  {"id":"a_r10","type":"relation","question":"离线强化学习与在线强化学习的共同来源是什么？"},
+  {"id":"a_o01","type":"refuse","question":"量子计算的退相干抑制有什么热点？"},
+  {"id":"a_o02","type":"refuse","question":"生物信息学中基因序列比对有什么热点？"},
+  {"id":"a_o03","type":"refuse","question":"医学影像 CT 分割的最新方法是什么？"},
+  {"id":"a_o04","type":"refuse","question":"航天器轨道摄动控制有什么最新研究？"}
+]

@@ -66,7 +66,7 @@ def save_api_settings(cfg, api: dict) -> None:
 
 
 def load_params(cfg) -> dict:
-    """读用户上一次的检索参数（形如 `{"max_topics": 4, "rlrag": true}`）。"""
+    """读用户上一次的 Agent 参数（形如 `{"search_limit": 12}`）。"""
     return dict(_read_settings(cfg).get("params") or {})
 
 

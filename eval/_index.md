@@ -20,6 +20,8 @@ tags: [索引]
 **数据文件**：问题集与 fixture（脚本读取，不整篇进上下文）。
 执行入口在 `scripts/run_v2_eval.py`。
 
+- `v2_acceptance_16.json`：local / compare / relation / OOD 共 16 题。
+
 qrels v2 计划目录：`qrels_v2/`
 - `queries.jsonl`：冻结查询
 - `pool.jsonl`：盲排候选池

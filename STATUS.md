@@ -6,8 +6,8 @@
 
 ## 当前目标
 
-算法 v2 paper-first 与离线 topic snapshot 已接通；silver qrels 已生成，
-当前重点是校准银标并补人工 gold audit。
+算法 v2 paper-first、离线 topic snapshot、契约 v2 和完整 HTTP 演示已跑通。
+当前不继续改检索算法，重点转向稳定性、超时归因和前端联调。
 
 ## 基线
 
@@ -44,13 +44,19 @@
 - Silver qrels：7 查询、367 候选、0 缺失；grade 0/1/2 = 83/20/264；
   其中 hard negatives + random negatives 已覆盖。
 - Silver 工具基线：Recall@10=0.2115、Recall@50=0.8316。
+- 契约 v2：旧参数已删除，仅保留 5 个 Agent/回答参数。
+- `meta` 已记录 PydanticAI、LanceDB、topic snapshot、trace 能力和 arXiv 索引缺失提示。
+- usage 已映射模型请求数、输入/输出 token 与耗时；成本仍为 0（待价格表）。
+- 16 题验收：9 条正常带引用回答、3 条 OOD 拒答、1 条范围内拒答、3 条超时。
+- 完整 HTTP 演示：DPO 返回 3 supported claims / 3 citations；
+  158.036s、4 次模型请求、11032 输入 token、1497 输出 token。
 
 ## 下一步
 
-1. 抽查 11 条低置信 silver 标签，建立 first gold audit。
-2. 扩充超过 7 条的语义查询集，避免 NDCG 饱和。
-3. 运行覆盖更多 local/compare/relation/OOD 的真实 agent 回归。
-4. Jev reranker 实验阻塞；topic snapshot 仍需可读性评估。
+1. 排查 3 条超时和 RLOO 范围内拒答；不改检索召回策略。
+2. 完善超时/重试与错误分层，降低 P95 延迟。
+3. 前端按 contract v2 联调，验证来源禁用与 usage 展示。
+4. 提交当前契约和验收改动；Jev 仍因模型/凭据缺失阻塞。
 
 ## 固定验收
 

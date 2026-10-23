@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional
 
 #: 契约版本。不兼容改动必须换号。
-CONTRACT_VERSION = "1"
+CONTRACT_VERSION = "2"
 
 #: 数据源枚举（与 `config.corpus` 一一对应，不新增实现）。
 SOURCES: dict[str, str] = {"meeting": "会议 24+25", "arxiv": "arXiv 周报"}
@@ -51,6 +51,7 @@ E_NO_API_KEY = "no_api_key"
 E_CORPUS_UNAVAILABLE = "corpus_unavailable"
 E_LLM_FAILED = "llm_failed"
 E_INTERNAL = "internal_error"
+E_INDEX_UNAVAILABLE = "index_unavailable"
 
 
 def normalize_base_url(url: str) -> str:
@@ -339,33 +340,21 @@ class ParamSpec:
 
 #: **唯一**的可调参数表。加参数只改这里；前端设置页自动跟着变。
 PARAM_SPEC: tuple[ParamSpec, ...] = (
-    ParamSpec("top_k_local", ("retrieval", "top_k_local"), "int",
-              "局部检索取几篇", "检索", "局部题现场取摘要的论文数", 8, 1, 50, 1),
-    ParamSpec("top_k_vector", ("retrieval", "top_k_vector"), "int",
-              "向量召回候选数", "检索", "语义召回的候选池大小", 50, 0, 500, 10),
-    ParamSpec("top_k_direction_fts", ("retrieval", "top_k_direction_fts"), "int",
-              "方向召回上限", "检索", "L1 三路里词法路的召回上限", 1000, 100, 20000, 100),
-    ParamSpec("top_query_direct", ("retrieval", "top_query_direct"), "int",
-              "关键词直投篇数", "检索", "绕过聚类、直接进上下文的命中论文数", 8, 0, 50, 1),
-    ParamSpec("llm_router", ("retrieval", "llm_router"), "bool",
-              "LLM 智能路由", "检索", "关掉则纯规则判 global/local（更快更省）"),
-    ParamSpec("query_rewrite", ("retrieval", "query_rewrite"), "bool",
-              "查询改写", "检索", "检索前用 LLM 把口语问题改成英文关键词"),
-    ParamSpec("followup_rounds", ("retrieval", "followup_rounds"), "int",
-              "追问读取轮数", "追问", "追问时把最近几轮问答折进上下文", 3, 1, 10, 1),
-    ParamSpec("followup_papers", ("api", "followup_papers"), "int",
-              "追问带入论文数", "追问", "把前文引用过的论文摘要并进上下文（0=不带）",
-              4, 0, 10, 1),
-    ParamSpec("max_topics", ("api", "max_topics"), "int",
-              "主题簇上限", "展示", "回答里最多命名/展示几个主题簇", 6, 1, 12, 1),
-    ParamSpec("max_evidence", ("api", "max_evidence"), "int",
-              "证据论文上限", "展示", "进上下文的证据论文条数", 8, 1, 20, 1),
-    ParamSpec("evidence_chars", ("api", "evidence_chars"), "int",
-              "摘要截断字数", "展示", "每篇证据摘要保留多少字符", 300, 80, 800, 20),
-    ParamSpec("rlrag", ("rlrag", "enabled"), "bool",
-              "rlRAG 重排", "算法开关", "用 RF 模型对被引概率重排候选"),
-    ParamSpec("streit_garg", ("streit_garg", "enabled"), "bool",
-              "Streit-Garg 关键路径", "算法开关", "计算「必备先序」并返回引用图"),
+    ParamSpec("search_limit", ("agent", "search_limit"), "int",
+              "单次搜索候选数", "Agent", "search_papers 单次最多返回的论文数",
+              12, 3, 30, 1),
+    ParamSpec("fetch_limit", ("agent", "fetch_limit"), "int",
+              "单次取摘要论文数", "Agent", "fetch_papers 单次最多读取的摘要数",
+              6, 1, 20, 1),
+    ParamSpec("max_claims", ("agent", "max_claims"), "int",
+              "答案 claim 上限", "回答", "最终最多保留的结构化证据 claim 数",
+              6, 1, 12, 1),
+    ParamSpec("agent_request_limit", ("agent", "request_limit"), "int",
+              "模型请求上限", "Agent", "单个问题最多允许的模型请求数",
+              10, 2, 20, 1),
+    ParamSpec("agent_tool_limit", ("agent", "tool_limit"), "int",
+              "工具调用上限", "Agent", "单个问题最多允许的工具调用数",
+              10, 2, 20, 1),
 )
 
 PARAM_BY_KEY: dict[str, ParamSpec] = {p.key: p for p in PARAM_SPEC}

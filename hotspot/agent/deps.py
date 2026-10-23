@@ -25,9 +25,20 @@ class AgentDeps:
     search_calls: int = 0
     fetch_calls: int = 0
     topic_calls: int = 0
+    search_limit: int = 12
+    fetch_limit: int = 6
+    max_claims: int = 6
+    request_limit: int = 10
+    tool_limit: int = 10
     events: list[dict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        agent = self.cfg.get("agent") or {}
+        self.search_limit = int(agent.get("search_limit") or self.search_limit)
+        self.fetch_limit = int(agent.get("fetch_limit") or self.fetch_limit)
+        self.max_claims = int(agent.get("max_claims") or self.max_claims)
+        self.request_limit = int(agent.get("request_limit") or self.request_limit)
+        self.tool_limit = int(agent.get("tool_limit") or self.tool_limit)
         if self.store is None:
             self.store = LancePaperStore(self.cfg, source=self.source)
         if self.topics is None:

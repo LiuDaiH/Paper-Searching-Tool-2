@@ -108,14 +108,14 @@ def check_contract() -> None:
             {"role": "assistant", "text": "上一答", "citation_ids": ["p1"]},
         ],
         "llm": {"base_url": "https://x/v1", "model": "m", "api_key": "secret"},
-        "params": {"max_topics": 4},
+        "params": {"search_limit": 16},
         "scope": {"years": [2025], "years_explicit": True},
     })
     dumped = req.to_dict()
     check("request roundtrip", dumped["mode"] == "followup")
     check("api key hidden", dumped["llm"]["api_key"] == "***")
     check("scope retained", dumped["scope"]["years"] == [2025])
-    check("params normalized", dumped["params"] == {"max_topics": 4})
+    check("params normalized", dumped["params"] == {"search_limit": 16})
 
     resp = StubEngine().ask(req)
     body = resp.to_dict()
@@ -176,7 +176,17 @@ def check_real_meta() -> None:
     print("[3] real engine shell")
     meta = Engine().meta().to_dict()
     check("real meta", bool(meta.get("sources")))
-    check("rebuild flag", meta["capabilities"].get("algorithm_v2_rebuilding") is True)
+    check("algorithm v2", meta["capabilities"].get("algorithm_version") == "2")
+    check("v2 params", {
+        "search_limit", "fetch_limit", "max_claims",
+        "agent_request_limit", "agent_tool_limit",
+    } == {p["key"] for p in meta.get("params", [])})
+    arxiv = next(
+        (item for item in meta.get("sources", []) if item.get("key") == "arxiv"),
+        {},
+    )
+    check("arXiv index unavailable is explicit",
+          "索引未构建" in str(arxiv.get("note") or ""))
 
 
 def main(argv: list[str] | None = None) -> int:

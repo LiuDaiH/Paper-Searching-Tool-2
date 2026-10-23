@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 
@@ -30,6 +30,7 @@ class AgentRun:
     answer: AgentAnswer
     deps: AgentDeps
     scope: ScopeDecision
+    usage: dict = field(default_factory=dict)
 
 
 INSTRUCTIONS = """你是本地论文库研究助手。只能依据工具返回的论文证据回答。
@@ -96,7 +97,7 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
         keywords: list[str] | None = None,
         years: list[int] | None = None,
         venues: list[str] | None = None,
-        limit: int = 12,
+        limit: int = 0,
     ) -> SearchResult:
         """Search local papers. Use concise English queries and optional synonyms."""
         if ctx.deps.search_calls >= 4:
@@ -104,13 +105,17 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
         ctx.deps.search_calls += 1
         effective_years = ctx.deps.years or years or []
         effective_venues = ctx.deps.venues or venues or []
+        effective_limit = min(
+            ctx.deps.search_limit,
+            limit if limit and limit > 0 else ctx.deps.search_limit,
+        )
         result = search_papers(
             ctx.deps.store,
             query,
             keywords=keywords,
             years=effective_years,
             venues=effective_venues,
-            limit=limit,
+            limit=effective_limit,
         )
         ctx.deps.seen_ids.update(hit.paper_id for hit in result.results)
         ctx.deps.events.append({
@@ -125,6 +130,7 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
     def fetch_tool(
         ctx: RunContext[AgentDeps],
         paper_ids: list[str],
+        limit: int = 0,
     ) -> list[PaperDetail]:
         """Fetch title and abstract for paper IDs returned by search."""
         if ctx.deps.fetch_calls >= 3:
@@ -133,7 +139,11 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
         unknown = [pid for pid in paper_ids if pid not in ctx.deps.seen_ids]
         if unknown:
             raise ModelRetry(f"paper IDs were not returned by search: {unknown}")
-        result = fetch_papers(ctx.deps.store, paper_ids)
+        effective_limit = min(
+            ctx.deps.fetch_limit,
+            limit if limit and limit > 0 else ctx.deps.fetch_limit,
+        )
+        result = fetch_papers(ctx.deps.store, paper_ids, limit=effective_limit)
         ctx.deps.fetched.update(paper.paper_id for paper in result)
         ctx.deps.fetched_order.extend(
             paper.paper_id for paper in result
@@ -181,6 +191,7 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
                 or "没有产生带可验证证据 ID 的 claim"
             )
             return output
+        output.claims = output.claims[:ctx.deps.max_claims]
         used = {
             pid
             for claim in output.claims
@@ -200,7 +211,23 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
     return agent
 
 
-def _classify_scope(question: str, cfg: dict, *, timeout: float = 45.0) -> ScopeDecision:
+def _usage_dict(*usages) -> dict:
+    names = (
+        "requests", "tool_calls", "input_tokens", "output_tokens",
+        "cache_read_tokens", "cache_write_tokens",
+    )
+    return {
+        name: sum(int(getattr(usage, name, 0) or 0) for usage in usages)
+        for name in names
+    }
+
+
+def _classify_scope(
+    question: str,
+    cfg: dict,
+    *,
+    timeout: float = 45.0,
+) -> tuple[ScopeDecision, dict]:
     llm = cfg.get("llm") or {}
     provider = OpenAIProvider(
         base_url=_normalize_base_url(
@@ -223,7 +250,7 @@ def _classify_scope(question: str, cfg: dict, *, timeout: float = 45.0) -> Scope
         timeout=timeout,
         usage_limits=UsageLimits(request_limit=2),
     )
-    return result.output
+    return result.output, _usage_dict(result.usage)
 
 
 def run_research_agent(
@@ -255,12 +282,15 @@ def run_research_agent(
         )
         if recent:
             prompt = f"最近对话：\n{recent}\n\n当前问题：{question}"
-    scope_decision = _classify_scope(prompt, cfg, timeout=min(45.0, timeout))
+    scope_decision, scope_usage = _classify_scope(
+        prompt, cfg, timeout=min(45.0, timeout),
+    )
     if not scope_decision.in_scope:
         return AgentRun(
             answer=AgentAnswer(no_answer_reason=scope_decision.reason),
             deps=deps,
             scope=scope_decision,
+            usage=scope_usage,
         )
 
     result = _build_agent(cfg).run_sync(
@@ -268,8 +298,16 @@ def run_research_agent(
         deps=deps,
         timeout=timeout,
         usage_limits=UsageLimits(
-            request_limit=10,
-            tool_calls_limit=10,
+            request_limit=deps.request_limit,
+            tool_calls_limit=deps.tool_limit,
         ),
     )
-    return AgentRun(answer=result.output, deps=deps, scope=scope_decision)
+    combined_usage = _usage_dict(result.usage)
+    for key, value in scope_usage.items():
+        combined_usage[key] = int(combined_usage.get(key, 0)) + int(value)
+    return AgentRun(
+        answer=result.output,
+        deps=deps,
+        scope=scope_decision,
+        usage=combined_usage,
+    )

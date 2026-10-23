@@ -96,8 +96,12 @@ llm_eval:
   api_key_env: Mobile_trash_API_KEY
   timeout: 600
 
-rlrag: {enabled: false}
-streit_garg: {enabled: false}
+agent:
+  search_limit: 12
+  fetch_limit: 6
+  max_claims: 6
+  request_limit: 10
+  tool_limit: 10
 """
 
 SNAP_README = """# 智引热点 · 样例应用（独立快照）

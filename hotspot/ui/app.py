@@ -286,6 +286,10 @@ def main() -> None:
 
     sources = {s["key"]: s for s in meta.get("sources") or []}
     src_keys = list(sources) or ["meeting"]
+    available_sources = [
+        key for key in src_keys
+        if "索引未构建" not in str((sources.get(key) or {}).get("note") or "")
+    ] or src_keys
 
     # 检索参数：整个侧栏里生成，提交时随请求带走（无会话状态）
     params_now: dict = {}
@@ -293,9 +297,15 @@ def main() -> None:
     with st.sidebar:
         st.subheader("会话")
         cur_src = st.session_state.get("src", "meeting")
-        idx = src_keys.index(cur_src) if cur_src in src_keys else 0
-        src_key = st.selectbox("数据源", src_keys, index=idx,
-                               format_func=lambda k: sources.get(k, {}).get("label", k),
+        if cur_src not in available_sources:
+            cur_src = available_sources[0]
+        idx = available_sources.index(cur_src) if cur_src in available_sources else 0
+        src_key = st.selectbox("数据源", available_sources, index=idx,
+                               format_func=lambda k: (
+                                   f"{sources.get(k, {}).get('label', k)}"
+                                   + (f" · {sources.get(k, {}).get('note')}"
+                                      if sources.get(k, {}).get("note") else "")
+                               ),
                                key="src_sel")
         st.session_state["src"] = src_key
 
