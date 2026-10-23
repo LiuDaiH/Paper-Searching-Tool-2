@@ -26,6 +26,8 @@ tags: [索引]
 - `check_tools_v2.py` —— LanceDB 标题探测与论文读取工具离线自检。
 - `run_v2_eval.py` —— v2 离线工具指标或可选真实 agent 端到端回归。
 - `build_lance_index.py` —— 从现有 BGE-M3 向量分片构建 LanceDB 论文索引。
+- `build_qrels_pool.py` —— 生成去分、盲排的 qrels 候选池。
+- `auto_label_qrels.py` —— 用移动云 LLM 批量生成 silver qrels，支持缓存续跑。
 - `run_server.py` —— HTTP 服务入口。
 - `run_ui.py` —— Streamlit 入口。
 - `cost_report.py` —— 成本报表。

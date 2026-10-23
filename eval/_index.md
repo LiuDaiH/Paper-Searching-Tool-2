@@ -20,6 +20,11 @@ tags: [索引]
 **数据文件**：问题集与 fixture（脚本读取，不整篇进上下文）。
 执行入口在 `scripts/run_v2_eval.py`。
 
+qrels v2 计划目录：`qrels_v2/`
+- `queries.jsonl`：冻结查询
+- `pool.jsonl`：盲排候选池
+- `silver.jsonl`：LLM 银标
+
 ## 脚本速查
 
 当前无 `.py`。

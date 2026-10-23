@@ -45,6 +45,7 @@ def tool_eval(
     *,
     limit: int,
     question_type: str | None = None,
+    qrels_path: Path | None = None,
 ) -> dict:
     cfg = load_config()
     corpus = open_corpus(cfg)
@@ -53,9 +54,22 @@ def tool_eval(
     if question_type:
         items = [item for item in items if item.get("type") == question_type]
     items = items[:limit or None]
+    qrels: dict[str, set[str]] = {}
+    if qrels_path and qrels_path.exists():
+        for line in qrels_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("grade") is not None and int(row["grade"]) > 0:
+                qrels.setdefault(str(row["query_id"]), set()).add(
+                    str(row["paper_id"])
+                )
     rows = []
     for item in items:
-        relevant = set(item.get("relevant_ids") or [])
+        relevant = qrels.get(
+            str(item["id"]),
+            set(item.get("relevant_ids") or []),
+        )
         started = time.perf_counter()
         result = store.search(
             str(item["query"]),
@@ -145,6 +159,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--type", default=None, help="只跑指定问题类型")
     parser.add_argument("--out", default=None)
+    parser.add_argument("--qrels", default=None)
     args = parser.parse_args()
     cfg = load_config()
     ws = paths_from(cfg)["workspace"]
@@ -160,7 +175,12 @@ def main() -> int:
         out = Path(args.out) if args.out else ws / "ledger" / "v2_agent_eval.json"
     else:
         path = Path(args.questions or ROOT / "eval" / "retrieval_questions.json")
-        result = tool_eval(path, limit=args.limit, question_type=args.type)
+        result = tool_eval(
+            path,
+            limit=args.limit,
+            question_type=args.type,
+            qrels_path=Path(args.qrels) if args.qrels else None,
+        )
         out = Path(args.out) if args.out else ws / "ledger" / "v2_tool_eval.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -170,6 +190,7 @@ def main() -> int:
             f"recall50={result['recall50']} ndcg10={result['ndcg10']} "
             f"mrr={result['mrr']} elapsed={result['elapsed_s']} "
             f"titles={result['title_probe_hits']}/{result['title_probes']} "
+            f"qrels={args.qrels or 'seed'} "
             f"out={out}"
         )
     return 0

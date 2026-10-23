@@ -1,0 +1,15 @@
+{
+  "kind": "silver",
+  "prompt_version": "qrels-v1",
+  "model": "deepseek-v4-flash-0731",
+  "queries": 7,
+  "candidates": 367,
+  "missing": 0,
+  "grade_counts": {
+    "0": 83,
+    "1": 20,
+    "2": 264
+  },
+  "low_confidence": 11,
+  "warning": "LLM-generated silver labels are for development, not gold reporting."
+}

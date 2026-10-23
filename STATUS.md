@@ -6,8 +6,8 @@
 
 ## 当前目标
 
-算法 v2 paper-first 与离线 topic snapshot 已接通；当前重点是扩大语义 qrels，
-再决定是否接入 Jev reranker。
+算法 v2 paper-first 与离线 topic snapshot 已接通；silver qrels 已生成，
+当前重点是校准银标并补人工 gold audit。
 
 ## 基线
 
@@ -41,13 +41,16 @@
 - 32 条精确标题探测 32/32；v2 工具集 Recall@10=0.291、Recall@50=0.558。
 - 5 条 OOD smoke 5/5 拒答；全局趋势问题会调用离线 topic snapshot。
 - Trace v2 已写入 `workspace/ledger/retrieval_trace.jsonl`。
+- Silver qrels：7 查询、367 候选、0 缺失；grade 0/1/2 = 83/20/264；
+  其中 hard negatives + random negatives 已覆盖。
+- Silver 工具基线：Recall@10=0.2115、Recall@50=0.8316。
 
 ## 下一步
 
-1. 扩充语义检索 qrels，校准 LanceDB 召回质量。
-2. 运行覆盖更多 local/compare/relation/OOD 的真实 agent 回归。
-3. Jev reranker 实验阻塞：本机模型权重和 API 凭据当前都不可用。
-4. 评估 topic snapshot 的可读性，再决定是否需要新主题模型。
+1. 抽查 11 条低置信 silver 标签，建立 first gold audit。
+2. 扩充超过 7 条的语义查询集，避免 NDCG 饱和。
+3. 运行覆盖更多 local/compare/relation/OOD 的真实 agent 回归。
+4. Jev reranker 实验阻塞；topic snapshot 仍需可读性评估。
 
 ## 固定验收
 
