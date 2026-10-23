@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
 
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 
 from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.exceptions import ModelConnectionError, UnexpectedModelBehavior
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
@@ -31,6 +33,14 @@ class AgentRun:
     deps: AgentDeps
     scope: ScopeDecision
     usage: dict = field(default_factory=dict)
+    timings: dict = field(default_factory=dict)
+
+
+class ResearchAgentError(RuntimeError):
+    def __init__(self, stage: str, code: str, message: str):
+        super().__init__(message)
+        self.stage = stage
+        self.code = code
 
 
 INSTRUCTIONS = """你是本地论文库研究助手。只能依据工具返回的论文证据回答。
@@ -87,7 +97,7 @@ def _build_agent(cfg: dict) -> Agent[AgentDeps, AgentAnswer]:
         deps_type=AgentDeps,
         output_type=AgentAnswer,
         instructions=INSTRUCTIONS,
-        retries=2,
+        retries=1,
     )
 
     @agent.tool
@@ -243,13 +253,22 @@ def _classify_scope(
         model,
         output_type=ScopeDecision,
         instructions=SCOPE_INSTRUCTIONS,
-        retries=1,
+        retries=0,
     )
-    result = agent.run_sync(
-        question,
-        timeout=timeout,
-        usage_limits=UsageLimits(request_limit=2),
-    )
+    try:
+        result = agent.run_sync(
+            question,
+            timeout=timeout,
+            usage_limits=UsageLimits(request_limit=1),
+        )
+    except TimeoutError as exc:
+        raise ResearchAgentError("scope", "scope_timeout", str(exc)) from exc
+    except ModelConnectionError as exc:
+        raise ResearchAgentError(
+            "scope", "scope_connection_failed", str(exc),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise ResearchAgentError("scope", "scope_failed", str(exc)) from exc
     return result.output, _usage_dict(result.usage)
 
 
@@ -282,26 +301,44 @@ def run_research_agent(
         )
         if recent:
             prompt = f"最近对话：\n{recent}\n\n当前问题：{question}"
+    scope_started = time.perf_counter()
     scope_decision, scope_usage = _classify_scope(
-        prompt, cfg, timeout=min(45.0, timeout),
+        prompt, cfg, timeout=deps.scope_timeout_s,
     )
+    scope_elapsed = round(time.perf_counter() - scope_started, 3)
     if not scope_decision.in_scope:
         return AgentRun(
             answer=AgentAnswer(no_answer_reason=scope_decision.reason),
             deps=deps,
             scope=scope_decision,
             usage=scope_usage,
+            timings={"scope_s": scope_elapsed},
         )
 
-    result = _build_agent(cfg).run_sync(
-        prompt,
-        deps=deps,
-        timeout=timeout,
-        usage_limits=UsageLimits(
-            request_limit=deps.request_limit,
-            tool_calls_limit=deps.tool_limit,
-        ),
-    )
+    agent_started = time.perf_counter()
+    try:
+        result = _build_agent(cfg).run_sync(
+            prompt,
+            deps=deps,
+            timeout=deps.agent_timeout_s,
+            usage_limits=UsageLimits(
+                request_limit=deps.request_limit,
+                tool_calls_limit=deps.tool_limit,
+            ),
+        )
+    except TimeoutError as exc:
+        raise ResearchAgentError("agent", "agent_timeout", str(exc)) from exc
+    except ModelConnectionError as exc:
+        raise ResearchAgentError(
+            "agent", "agent_connection_failed", str(exc),
+        ) from exc
+    except UnexpectedModelBehavior as exc:
+        raise ResearchAgentError(
+            "agent", "agent_output_invalid", str(exc),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise ResearchAgentError("agent", "agent_failed", str(exc)) from exc
+    agent_elapsed = round(time.perf_counter() - agent_started, 3)
     combined_usage = _usage_dict(result.usage)
     for key, value in scope_usage.items():
         combined_usage[key] = int(combined_usage.get(key, 0)) + int(value)
@@ -310,4 +347,5 @@ def run_research_agent(
         deps=deps,
         scope=scope_decision,
         usage=combined_usage,
+        timings={"scope_s": scope_elapsed, "agent_s": agent_elapsed},
     )

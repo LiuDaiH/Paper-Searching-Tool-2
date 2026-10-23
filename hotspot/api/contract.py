@@ -35,9 +35,7 @@ MODES: tuple[str, ...] = ("new", "followup")
 
 #: 进度阶段。**前端只认 key，不认中文名**——中文名改了不影响前端。
 STAGES: tuple[tuple[str, str], ...] = (
-    ("parse", "意图解析/改写"),
-    ("retrieve", "检索+子聚集"),
-    ("name", "簇命名"),
+    ("retrieve", "检索与证据"),
     ("answer", "生成回答"),
     ("verify", "校验引用"),
 )
@@ -52,6 +50,11 @@ E_CORPUS_UNAVAILABLE = "corpus_unavailable"
 E_LLM_FAILED = "llm_failed"
 E_INTERNAL = "internal_error"
 E_INDEX_UNAVAILABLE = "index_unavailable"
+E_SCOPE_TIMEOUT = "scope_timeout"
+E_AGENT_TIMEOUT = "agent_timeout"
+E_AGENT_CONNECTION = "agent_connection_failed"
+E_AGENT_OUTPUT = "agent_output_invalid"
+E_VERIFY_TIMEOUT = "verify_timeout"
 
 
 def normalize_base_url(url: str) -> str:
@@ -355,6 +358,15 @@ PARAM_SPEC: tuple[ParamSpec, ...] = (
     ParamSpec("agent_tool_limit", ("agent", "tool_limit"), "int",
               "工具调用上限", "Agent", "单个问题最多允许的工具调用数",
               10, 2, 20, 1),
+    ParamSpec("scope_timeout_s", ("agent", "scope_timeout_s"), "int",
+              "范围判断超时", "稳定性", "scope classifier 单次超时秒数",
+              30, 5, 120, 5),
+    ParamSpec("agent_timeout_s", ("agent", "agent_timeout_s"), "int",
+              "Agent 超时", "稳定性", "主 agent 单次运行超时秒数",
+              150, 30, 600, 10),
+    ParamSpec("verify_timeout_s", ("agent", "verify_timeout_s"), "int",
+              "引用校验超时", "稳定性", "整批引用校验硬超时秒数",
+              30, 5, 120, 5),
 )
 
 PARAM_BY_KEY: dict[str, ParamSpec] = {p.key: p for p in PARAM_SPEC}

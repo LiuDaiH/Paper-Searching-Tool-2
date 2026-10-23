@@ -11,6 +11,7 @@ import argparse
 import contextlib
 import io
 import json
+import time
 import sys
 import threading
 import urllib.error
@@ -33,6 +34,8 @@ from hotspot.api.contract import (  # noqa: E402
 )
 from hotspot.api.engine import Engine  # noqa: E402
 from hotspot.api.http import create_server  # noqa: E402
+from hotspot.core.models import AgentAnswer, AnswerClaim  # noqa: E402
+from hotspot.reasoning.grounding import verify_and_render  # noqa: E402
 
 FAILS: list[str] = []
 CHECKS = 0
@@ -177,9 +180,15 @@ def check_real_meta() -> None:
     meta = Engine().meta().to_dict()
     check("real meta", bool(meta.get("sources")))
     check("algorithm v2", meta["capabilities"].get("algorithm_version") == "2")
+    timeouts = meta["capabilities"].get("timeouts") or {}
+    check("independent timeout policy",
+          timeouts.get("scope_s") == 30
+          and timeouts.get("agent_s") == 150
+          and timeouts.get("verify_s") == 30)
     check("v2 params", {
         "search_limit", "fetch_limit", "max_claims",
         "agent_request_limit", "agent_tool_limit",
+        "scope_timeout_s", "agent_timeout_s", "verify_timeout_s",
     } == {p["key"] for p in meta.get("params", [])})
     arxiv = next(
         (item for item in meta.get("sources", []) if item.get("key") == "arxiv"),
@@ -187,6 +196,45 @@ def check_real_meta() -> None:
     )
     check("arXiv index unavailable is explicit",
           "索引未构建" in str(arxiv.get("note") or ""))
+
+
+def check_verify_timeout_fallback() -> None:
+    print("[4] verify timeout fallback")
+
+    class Paper:
+        title = "DPO removes the explicit reward model"
+        abstract = "Direct Preference Optimization trains directly from preferences."
+
+    class Corpus:
+        def get(self, pid):
+            return Paper() if pid == "p1" else None
+
+    class SlowClient:
+        usage = type("Usage", (), {"failures": 0})()
+
+        def ask(self, *args, **kwargs):
+            time.sleep(2.0)
+            return type("Call", (), {"ok": False, "data": {}, "error": "slow"})()
+
+    answer = AgentAnswer(claims=[
+        AnswerClaim(
+            text="DPO removes the explicit reward model",
+            evidence_ids=["p1"],
+        ),
+    ])
+    result = verify_and_render(
+        answer,
+        corpus=Corpus(),
+        cfg={},
+        client=SlowClient(),
+        timeout_s=0.05,
+        fallback_ids=["p1"],
+    )
+    check("verify 超时使用本地抽取式降级",
+          not result.refused and len(result.citation_ids) == 1
+          and result.verification_status == "timeout_fallback"
+          and any("超时" in warning for warning in result.warnings),
+          str(result))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -201,10 +249,12 @@ def main(argv: list[str] | None = None) -> int:
             check_contract()
             check_http()
             check_real_meta()
+            check_verify_timeout_fallback()
     else:
         check_contract()
         check_http()
         check_real_meta()
+        check_verify_timeout_fallback()
     if FAILS:
         print(f"✗ checks={CHECKS} failures={len(FAILS)}")
         for item in FAILS:

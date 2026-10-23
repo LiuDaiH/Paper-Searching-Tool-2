@@ -102,6 +102,9 @@ agent:
   max_claims: 6
   request_limit: 10
   tool_limit: 10
+  scope_timeout_s: 30
+  agent_timeout_s: 150
+  verify_timeout_s: 30
 """
 
 SNAP_README = """# 智引热点 · 样例应用（独立快照）

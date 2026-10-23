@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..api.contract import Citation, Verdict as ContractVerdict
 from ..core.models import AgentAnswer, AnswerClaim
@@ -21,6 +22,9 @@ class GroundingResult:
     refuse_reason: str = ""
     verdicts: tuple[ContractVerdict, ...] = ()
     citation_ids: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+    verification_status: str = "ok"
+    usage: dict = field(default_factory=dict)
 
 
 def _render(text: str, evidence_ids: list[str]) -> str:
@@ -37,6 +41,8 @@ def verify_and_render(
     corpus,
     cfg: dict,
     client=None,
+    timeout_s: float = 30.0,
+    fallback_ids: list[str] | tuple[str, ...] = (),
 ) -> GroundingResult:
     """Enforce fetched IDs, citation verification, and deterministic rendering."""
     if not answer.claims:
@@ -72,14 +78,49 @@ def verify_and_render(
         for pid, paper in details.items()
         if paper is not None
     }
-    client = client or make_client(cfg)
-    verdicts = verify_claims(
+    client = client or make_client(cfg, timeout=timeout_s)
+    usage_names = ("calls", "prompt_tokens", "completion_tokens", "failures")
+    usage_before = {
+        name: int(getattr(client.usage, name, 0) or 0)
+        for name in usage_names
+    }
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(
+        verify_claims,
         schema_claims,
         allowed_ids=frozenset(evidence_ids),
         evidence_lookup=evidence_lookup,
         client=client,
         cfg=cfg,
         batch=True,
+    )
+    verify_timed_out = False
+    verify_error = ""
+    try:
+        verdicts = future.result(timeout=max(1.0, timeout_s))
+    except concurrent.futures.TimeoutError:
+        verify_timed_out = True
+        executor.shutdown(wait=False, cancel_futures=True)
+        verdicts = []
+    except Exception as exc:  # noqa: BLE001
+        verify_error = f"{type(exc).__name__}: {exc}"
+        executor.shutdown(wait=False, cancel_futures=True)
+        verdicts = []
+    else:
+        executor.shutdown(wait=False)
+
+    usage_after = {
+        name: int(getattr(client.usage, name, 0) or 0)
+        for name in usage_names
+    }
+    verify_usage = {
+        name: usage_after[name] - usage_before[name]
+        for name in usage_names
+    }
+    failures_after = usage_after["failures"]
+    failures_before = usage_before["failures"]
+    verification_failed = bool(
+        verify_timed_out or verify_error or failures_after > failures_before
     )
 
     rendered = []
@@ -98,16 +139,73 @@ def verify_and_render(
             used_ids.extend(claim.cited_ids)
 
     if not rendered:
+        if verification_failed and fallback_ids:
+            local = local_extractive_ground(
+                corpus,
+                fallback_ids,
+                reason=(
+                    "引用校验超时，已退回本地抽取式证据"
+                    if verify_timed_out
+                    else "引用校验失败，已退回本地抽取式证据"
+                ),
+                status="timeout_fallback" if verify_timed_out else "failed_fallback",
+                usage=verify_usage,
+            )
+            if local is not None:
+                return local
         return GroundingResult(
             refused=True,
             refuse_reason="所有候选 claim 都未通过引用校验",
             verdicts=tuple(contract_verdicts),
             citation_ids=tuple(dict.fromkeys(used_ids)),
+            warnings=(
+                (verify_error or "引用校验超时")
+                if verification_failed else ()
+            ),
+            verification_status=(
+                "timeout" if verify_timed_out
+                else "failed" if verification_failed
+                else "unsupported"
+            ),
+            usage=verify_usage,
         )
     return GroundingResult(
         text="\n".join(rendered),
         verdicts=tuple(contract_verdicts),
         citation_ids=tuple(dict.fromkeys(used_ids)),
+    )
+
+
+def local_extractive_ground(
+    corpus,
+    fetched_ids: list[str] | tuple[str, ...],
+    *,
+    reason: str,
+    status: str,
+    usage: dict | None = None,
+) -> GroundingResult | None:
+    answer = extractive_fallback(corpus, fetched_ids)
+    if not answer.claims:
+        return None
+    rendered = []
+    verdicts = []
+    used_ids = []
+    for item in answer.claims:
+        text = _render(item.text, item.evidence_ids)
+        rendered.append(text)
+        used_ids.extend(item.evidence_ids)
+        verdicts.append(ContractVerdict(
+            status="supported",
+            text=text,
+            detail="本地抽取式证据降级",
+        ))
+    return GroundingResult(
+        text="\n".join(rendered),
+        verdicts=tuple(verdicts),
+        citation_ids=tuple(dict.fromkeys(used_ids)),
+        warnings=(reason,),
+        verification_status=status,
+        usage=dict(usage or {}),
     )
 
 

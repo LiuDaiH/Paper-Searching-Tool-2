@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any, Optional
 
-from ..agent.runtime import run_research_agent
+from ..agent.runtime import ResearchAgentError, run_research_agent
 from ..config import load_config
 from ..corpus import open_arxiv_corpus, open_corpus
 from ..index.lance_store import LancePaperStore
@@ -92,6 +92,17 @@ class Engine:
             "retrieval": "lancedb-vector+fts",
             "topic_snapshot": True,
             "trace": True,
+            "timeouts": {
+                "scope_s": float(
+                    ((self._cfg.get("agent") or {}).get("scope_timeout_s") or 30)
+                ),
+                "agent_s": float(
+                    ((self._cfg.get("agent") or {}).get("agent_timeout_s") or 150)
+                ),
+                "verify_s": float(
+                    ((self._cfg.get("agent") or {}).get("verify_timeout_s") or 30)
+                ),
+            },
             "stream": True,
             "dry_run": False,
             "sources": list(SOURCES),
@@ -121,6 +132,7 @@ class Engine:
                 "scope_decision": (
                     run.scope.model_dump() if run is not None else None
                 ),
+                "timings": dict(run.timings) if run is not None else {},
                 "actions": actions,
                 "outcome": {
                     "route": response.route,
@@ -146,6 +158,11 @@ class Engine:
                             "topic_calls": run.deps.topic_calls,
                         }
                         if run is not None else {}
+                    ),
+                    "verification_status": (
+                        ((response.meta or {}).get("agent") or {}).get(
+                            "verification_status"
+                        )
                     ),
                 },
             })
@@ -182,6 +199,18 @@ class Engine:
                 scope=req.scope,
                 history=[m.to_dict() for m in req.history],
             )
+        except ResearchAgentError as exc:
+            elapsed = round(time.perf_counter() - started, 3)
+            return finish(AskResponse(
+                request_id=new_request_id(),
+                source=req.source,
+                mode=req.mode,
+                route="error",
+                error={"code": exc.code, "message": str(exc)},
+                warnings=[f"{exc.stage} 阶段失败：{exc}"],
+                usage=Usage(elapsed_s=elapsed),
+                meta={"agent": {"failed_stage": exc.stage}},
+            ))
         except RuntimeError as exc:
             if "API key" in str(exc):
                 raise ApiError(E_NO_API_KEY, str(exc)) from exc
@@ -209,11 +238,15 @@ class Engine:
             answer = run.answer
             if not answer.claims and run.deps.fetched_order:
                 answer = extractive_fallback(corpus, run.deps.fetched_order)
+            verify_started = time.perf_counter()
             grounded = verify_and_render(
                 answer,
                 corpus=corpus,
                 cfg=cfg,
+                timeout_s=run.deps.verify_timeout_s,
+                fallback_ids=run.deps.fetched_order,
             )
+            verify_elapsed = round(time.perf_counter() - verify_started, 3)
         except Exception as exc:  # noqa: BLE001
             message = f"算法 v2 处理失败：{type(exc).__name__}: {exc}"
             return finish(AskResponse(
@@ -243,16 +276,30 @@ class Engine:
             ),
             verdicts=list(grounded.verdicts),
             citations=make_citations(corpus, grounded.citation_ids),
-            warnings=list(run.answer.limitations),
+            warnings=list(dict.fromkeys([
+                *run.answer.limitations,
+                *grounded.warnings,
+            ])),
             usage=Usage(
-                llm_calls=int(run.usage.get("requests") or 0),
-                tokens_in=int(run.usage.get("input_tokens") or 0),
-                tokens_out=int(run.usage.get("output_tokens") or 0),
+                llm_calls=(
+                    int(run.usage.get("requests") or 0)
+                    + int((grounded.usage or {}).get("calls") or 0)
+                ),
+                tokens_in=(
+                    int(run.usage.get("input_tokens") or 0)
+                    + int((grounded.usage or {}).get("prompt_tokens") or 0)
+                ),
+                tokens_out=(
+                    int(run.usage.get("output_tokens") or 0)
+                    + int((grounded.usage or {}).get("completion_tokens") or 0)
+                ),
+                failures=int((grounded.usage or {}).get("failures") or 0),
                 elapsed_s=elapsed,
                 stages={
-                    "retrieve": 0.0,
-                    "answer": elapsed,
-                    "verify": elapsed,
+                    "scope": float(run.timings.get("scope_s") or 0.0),
+                    "agent": float(run.timings.get("agent_s") or 0.0),
+                    "verify": verify_elapsed,
+                    "total": elapsed,
                 },
             ),
             meta={
@@ -263,6 +310,9 @@ class Engine:
                     "seen_ids": len(run.deps.seen_ids),
                     "fetched_ids": len(run.deps.fetched),
                     "tool_events": run.deps.events,
+                    "timings": dict(run.timings),
+                    "verify_s": verify_elapsed,
+                    "verification_status": grounded.verification_status,
                 },
                 "answer_claims": [item.model_dump() for item in run.answer.claims],
                 "scope": run.scope.model_dump(),

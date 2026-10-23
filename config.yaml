@@ -66,6 +66,9 @@ agent:
   max_claims: 6
   request_limit: 10
   tool_limit: 10
+  scope_timeout_s: 30
+  agent_timeout_s: 150
+  verify_timeout_s: 30
 
 spread:
   # ── 跨会扩散三态（方案 §3.2）—— 纯计数，0 token ──

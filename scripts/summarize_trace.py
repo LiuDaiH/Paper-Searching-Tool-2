@@ -60,6 +60,7 @@ def _record(trace: dict) -> dict:
             "share": None,
             "error": bool(outcome.get("error")),
             "tools": dict(tools),
+            "verification": str(outcome.get("verification_status") or ""),
             "latency": {"total": outcome.get("elapsed_s")},
         }
     retrieval, observation_evidence = _retrieve(trace)
@@ -79,6 +80,7 @@ def _record(trace: dict) -> dict:
         "share": coverage.get("dominant_share"),
         "error": bool(outcome.get("error")),
         "tools": {},
+        "verification": "",
         "latency": {
             str(action.get("name")): action.get("elapsed")
             for action in actions
@@ -101,6 +103,9 @@ def _group(rows: list[dict]) -> dict:
         "tools": dict(sum(
             (Counter(row.get("tools") or {}) for row in rows),
             Counter(),
+        )),
+        "verification": dict(Counter(
+            row.get("verification") or "-" for row in rows
         )),
         "evidence": dict(Counter(row["evidence"] or "-" for row in rows)),
         "domain_gate": dict(Counter(row["domain_gate"] or "-" for row in rows)),
@@ -157,6 +162,7 @@ def main() -> int:
         f"routes={overall['routes']} refused={overall['refused']} "
         f"errors={overall['errors']} tools={overall['tools']}"
     )
+    print(f"verification | statuses={overall['verification']}")
     print(
         f"evidence | decisions={overall['evidence']} "
         f"domain={overall['domain_gate']}"

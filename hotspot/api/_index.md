@@ -14,6 +14,7 @@ tags: [索引]
 - 契约 v1 保留；前端仍可依赖请求/响应形状。
 - `engine.py` 将 `AskRequest` 转为 request-scoped agent 运行，再执行强制 grounding。
 - dry-run 暂不生成答案；真实问答需要 LLM key 与 `workspace/lance/`。
+- scope / agent / verify 使用独立超时；错误码区分 timeout、connection 和 output-invalid。
 
 ## 3. 文件清单
 

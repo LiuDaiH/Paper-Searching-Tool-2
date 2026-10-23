@@ -30,6 +30,9 @@ class AgentDeps:
     max_claims: int = 6
     request_limit: int = 10
     tool_limit: int = 10
+    scope_timeout_s: float = 30.0
+    agent_timeout_s: float = 150.0
+    verify_timeout_s: float = 30.0
     events: list[dict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -39,6 +42,15 @@ class AgentDeps:
         self.max_claims = int(agent.get("max_claims") or self.max_claims)
         self.request_limit = int(agent.get("request_limit") or self.request_limit)
         self.tool_limit = int(agent.get("tool_limit") or self.tool_limit)
+        self.scope_timeout_s = float(
+            agent.get("scope_timeout_s") or self.scope_timeout_s
+        )
+        self.agent_timeout_s = float(
+            agent.get("agent_timeout_s") or self.agent_timeout_s
+        )
+        self.verify_timeout_s = float(
+            agent.get("verify_timeout_s") or self.verify_timeout_s
+        )
         if self.store is None:
             self.store = LancePaperStore(self.cfg, source=self.source)
         if self.topics is None:

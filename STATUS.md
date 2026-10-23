@@ -44,17 +44,22 @@
 - Silver qrels：7 查询、367 候选、0 缺失；grade 0/1/2 = 83/20/264；
   其中 hard negatives + random negatives 已覆盖。
 - Silver 工具基线：Recall@10=0.2115、Recall@50=0.8316。
-- 契约 v2：旧参数已删除，仅保留 5 个 Agent/回答参数。
+- 契约 v2：旧参数已删除，保留 5 个 Agent/回答参数 + 3 个独立超时参数。
 - `meta` 已记录 PydanticAI、LanceDB、topic snapshot、trace 能力和 arXiv 索引缺失提示。
 - usage 已映射模型请求数、输入/输出 token 与耗时；成本仍为 0（待价格表）。
 - 16 题验收：9 条正常带引用回答、3 条 OOD 拒答、1 条范围内拒答、3 条超时。
 - 完整 HTTP 演示：DPO 返回 3 supported claims / 3 citations；
   158.036s、4 次模型请求、11032 输入 token、1497 输出 token。
+- 历史 3 条超时均无 scope decision、无工具事件，归因为 scope 阶段超时。
+- scope/agent/verify 已拆为 30/150/30 秒独立预算；scope 不重试，agent 最多一次。
+- agent 异常已分类为 timeout / connection / output-invalid；verify 硬超时后回退本地抽取式证据。
+- 接口文档已同步 v2：route、SSE 三阶段、空 topics/graph、超时码、verify 状态、
+  arXiv 不可用和 usage 口径全部更新。
 
 ## 下一步
 
-1. 排查 3 条超时和 RLOO 范围内拒答；不改检索召回策略。
-2. 完善超时/重试与错误分层，降低 P95 延迟。
+1. 用新超时预算重跑历史 3 条超时问题，验证错误分层。
+2. 排查 RLOO 范围内拒答；不改检索召回策略。
 3. 前端按 contract v2 联调，验证来源禁用与 usage 展示。
 4. 提交当前契约和验收改动；Jev 仍因模型/凭据缺失阻塞。
 
