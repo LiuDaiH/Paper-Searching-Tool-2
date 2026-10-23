@@ -79,7 +79,7 @@ tags: [索引, 说明书]
 
 ## 6. 维护本文件（树形回写）
 
-改任何 md 之后，回写子 README 与根 README，**终点是根（本文件）**——传播表见 `.claude/skills/folder-readme/SKILL.md` §三。
+改任何 md 之后，回写子 README 与根 README，**终点是根（本文件）**——回写规则见 `.claude/skills/folder-readme/SKILL.md` §4。
 
 ---
 
